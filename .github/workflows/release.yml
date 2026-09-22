@@ -12,9 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - run: python3 scripts/check-version.py
+      - run: python3 scripts/check-repository.py
+      - run: find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
 
   build:
     needs: validate
@@ -23,17 +24,18 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: linux-amd64
-          - os: macos-13
+          - os: ubuntu-24.04-arm
+            artifact: linux-arm64
+          - os: macos-15-intel
             artifact: macos-amd64
-          - os: macos-14
+          - os: macos-15
             artifact: macos-arm64
           - os: windows-latest
             artifact: windows-amd64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - uses: dtolnay/rust-toolchain@stable
       - name: Build
         shell: bash
@@ -67,15 +69,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
-      - name: Source archive
+      - name: Package source, bridge and contracts
         run: |
           git archive --format=zip --prefix="cypht-gateway-${GITHUB_REF_NAME}/" -o "release-assets/cypht-gateway-${GITHUB_REF_NAME}-source.zip" "$GITHUB_REF_NAME"
+          (cd cypht-module && zip -qr "../release-assets/cypht-gateway-${GITHUB_REF_NAME}-cypht-bridge.zip" gateway)
+          cp api/openapi.yaml "release-assets/cypht-gateway-${GITHUB_REF_NAME}-openapi.yaml"
+          cp api/capability-registry.yaml "release-assets/cypht-gateway-${GITHUB_REF_NAME}-capabilities.yaml"
           cd release-assets
           sha256sum * > SHA256SUMS
       - name: Create GitHub Release

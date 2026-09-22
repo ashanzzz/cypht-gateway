@@ -5,7 +5,17 @@ services:
       dockerfile: Dockerfile
     environment:
       GATEWAY_BIND: 0.0.0.0:8080
+      GATEWAY_DB_PATH: /var/lib/cypht-gateway/gateway.db
+      GATEWAY_MASTER_KEY: ${GATEWAY_MASTER_KEY:?set GATEWAY_MASTER_KEY to openssl rand -base64 32}
+      CYPHT_BASE_URL: ${CYPHT_BASE_URL:?set the internal URL of Cypht}
+      CYPHT_API_LOGIN_KEY: ${CYPHT_API_LOGIN_KEY:?must match Cypht API_LOGIN_KEY}
+      CYPHT_BRIDGE_KEY: ${CYPHT_BRIDGE_KEY:?must match Cypht GATEWAY_BRIDGE_KEY}
       RUST_LOG: gatewayd=info,tower_http=info
+    volumes:
+      - gateway-data:/var/lib/cypht-gateway
     ports:
       - "8080:8080"
     restart: unless-stopped
+
+volumes:
+  gateway-data:

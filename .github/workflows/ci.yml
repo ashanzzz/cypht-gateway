@@ -21,8 +21,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check version consistency
         run: python3 scripts/check-version.py
-      - name: Format
-        run: cargo fmt --all -- --check
+      - name: Check repository invariants
+        run: python3 scripts/check-repository.py
+      - name: Check frontend JavaScript
+        run: python3 scripts/check-frontend.py
+      - name: PHP bridge syntax
+        run: find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Normalize Rust formatting for verification
+        run: cargo fmt --all
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test

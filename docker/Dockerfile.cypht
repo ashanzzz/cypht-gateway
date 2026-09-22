@@ -1,0 +1,3 @@
+ARG CYPHT_IMAGE=cypht/cypht:2.12.2
+FROM ${CYPHT_IMAGE}
+COPY cypht-module/gateway /usr/local/share/cypht/modules/gateway

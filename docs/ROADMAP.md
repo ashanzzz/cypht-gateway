@@ -1,32 +1,37 @@
 # Roadmap
 
-## v0.1.x — foundation
+## v0.1.x — foundation ✓
 
 - Git/SemVer foundation
 - build metadata
 - API daemon skeleton
 - CLI skeleton
 - Docker/GitHub build automation
-- OpenAPI seed
 
-## v0.2.x — Cypht bridge and authentication
+## v0.2.x — bridge, auth and readable mail ✓
 
-- private PHP bridge
-- Cypht username/password session validation
-- encrypted gateway credential vault
-- PAT management and scopes
-- API Tokens management UI
+- private Cypht PHP bridge
+- Cypht username/password login through `api_login`
+- encrypted SQLite credential/session vault
+- PAT management, scopes, expiry and revocation
+- opaque signed object IDs
+- accounts and mailboxes
+- unified inbox
+- search
+- parsed message body and attachment metadata
+- management UI
+- expanded CLI
 
-## v0.3.x — complete mail core
+## v0.3.x — complete mail writes
 
-- accounts/profiles
-- unified inbox and folder listing
-- search and advanced search
-- read/raw/headers
-- attachment metadata/download
+- SMTP/profile discovery
 - send/reply/reply-all/forward
-- drafts/uploads/scheduled send
-- flags/move/copy/trash/delete
+- upload/download attachments
+- drafts
+- scheduled send
+- flags/read/unread
+- move/copy/archive/trash/delete
+- idempotency keys for sending
 
 ## v0.4.x — Cypht feature coverage
 
@@ -49,4 +54,4 @@
 
 ## v1.0.0
 
-Stable REST v1, MCP tool naming, CLI commands, PAT model, and documented compatibility policy.
+Stable REST v1, MCP tool naming, CLI commands, PAT model and documented compatibility policy.
