@@ -1,0 +1,16 @@
+[package]
+name = "gateway-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+gateway-auth = { path = "../gateway-auth" }
+gateway-core = { path = "../gateway-core" }
+gateway-domain = { path = "../gateway-domain" }
+serde.workspace = true
+serde_json.workspace = true
+tower-http.workspace = true
+tracing.workspace = true

@@ -2,12 +2,18 @@ openapi: 3.1.0
 info:
   title: Cypht Gateway API
   version: v1
-  description: Initial contract seed for Cypht Gateway. Mail endpoints will be added in later milestones.
+  description: >-
+    Stable automation contract over Cypht. Gateway v0.2 implements Cypht login,
+    personal access tokens, configured-account discovery, mailbox listing,
+    unified inbox, cross-account search, parsed message reads and attachment metadata.
 servers:
   - url: /api/v1
+security:
+  - bearerAuth: []
 paths:
   /meta/version:
     get:
+      security: []
       operationId: getVersion
       summary: Return gateway build and Git metadata
       responses:
@@ -15,25 +21,344 @@ paths:
           description: Build metadata
           content:
             application/json:
+              schema: {$ref: "#/components/schemas/BuildInfo"}
+  /auth/login:
+    post:
+      security: []
+      operationId: login
+      summary: Validate Cypht credentials and issue a short-lived gateway access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoginRequest"}
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LoginResponse"}
+        "401": {$ref: "#/components/responses/Error"}
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke a short-lived gateway session
+      responses:
+        "204": {description: Session revoked}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+  /me:
+    get:
+      operationId: me
+      responses:
+        "200":
+          description: Current principal
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MeResponse"}
+        "401": {$ref: "#/components/responses/Error"}
+  /tokens:
+    get:
+      operationId: listTokens
+      responses:
+        "200":
+          description: PAT metadata list
+          content:
+            application/json:
               schema:
-                $ref: "#/components/schemas/BuildInfo"
+                type: array
+                items: {$ref: "#/components/schemas/TokenMetadata"}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createToken
+      summary: Create a PAT. The raw token is returned exactly once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateTokenRequest"}
+      responses:
+        "201":
+          description: Token created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CreatedToken"}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /tokens/{id}:
+    delete:
+      operationId: revokeToken
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "204": {description: Revoked}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /accounts:
+    get:
+      operationId: listAccounts
+      responses:
+        "200":
+          description: Configured mail accounts visible to this token
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Account"}
+        "403": {$ref: "#/components/responses/Error"}
+  /accounts/{id}/mailboxes:
+    get:
+      operationId: listMailboxes
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Mailboxes for the selected account
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Mailbox"}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /messages:
+    get:
+      operationId: listMessages
+      summary: List one account mailbox or the unified inbox when account_id is omitted
+      parameters:
+        - {name: account_id, in: query, schema: {type: string}}
+        - {name: mailbox_id, in: query, schema: {type: string}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200":
+          description: Message page
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MessagePage"}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /messages/search:
+    post:
+      operationId: searchMessages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SearchRequest"}
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MessagePage"}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /messages/{id}:
+    get:
+      operationId: readMessage
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Parsed message and attachment metadata
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Message"}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
 components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
   schemas:
     BuildInfo:
       type: object
       required: [version, git_sha, git_short_sha, git_dirty, api_version]
       properties:
-        version:
-          type: string
-        git_sha:
-          type: string
-        git_short_sha:
-          type: string
-        git_tag:
-          type: [string, "null"]
-        git_dirty:
-          type: boolean
-        build_time:
-          type: [string, "null"]
-        api_version:
-          type: string
+        version: {type: string}
+        git_sha: {type: string}
+        git_short_sha: {type: string}
+        git_tag: {type: [string, "null"]}
+        git_dirty: {type: boolean}
+        build_time: {type: [string, "null"]}
+        api_version: {type: string}
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username: {type: string, minLength: 1}
+        password: {type: string, format: password, minLength: 1}
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token: {type: string}
+        token_type: {type: string, const: Bearer}
+        expires_in: {type: integer, minimum: 1}
+    MeResponse:
+      type: object
+      required: [username, auth_kind, scopes]
+      properties:
+        username: {type: string}
+        auth_kind: {type: string, enum: [session, pat]}
+        scopes: {type: array, items: {type: string}}
+    CreateTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        scopes:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/Scope"}
+        account_allowlist:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+        expires_in_days: {type: [integer, "null"], minimum: 1, maximum: 3650}
+    CreatedToken:
+      type: object
+      required: [id, name, token, prefix, scopes, account_allowlist, created_at]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        token: {type: string, description: Returned only on creation}
+        prefix: {type: string}
+        scopes: {type: array, items: {$ref: "#/components/schemas/Scope"}}
+        account_allowlist: {type: array, items: {type: string}}
+        created_at: {type: integer}
+        expires_at: {type: [integer, "null"]}
+    TokenMetadata:
+      type: object
+      required: [id, name, prefix, scopes, account_allowlist, created_at]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        prefix: {type: string}
+        scopes: {type: array, items: {$ref: "#/components/schemas/Scope"}}
+        account_allowlist: {type: array, items: {type: string}}
+        created_at: {type: integer}
+        expires_at: {type: [integer, "null"]}
+        last_used_at: {type: [integer, "null"]}
+        revoked_at: {type: [integer, "null"]}
+    Scope:
+      type: string
+      enum:
+        - accounts.read
+        - mail.read
+        - mail.search
+        - attachments.read
+        - mail.send
+        - mail.modify
+        - mail.delete
+        - tokens.manage
+    Account:
+      type: object
+      required: [id, name, protocol, can_send]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        email: {type: [string, "null"]}
+        protocol: {type: string}
+        server: {type: [string, "null"]}
+        can_send: {type: boolean}
+    Mailbox:
+      type: object
+      required: [id, account_id, name, display_name, selectable]
+      properties:
+        id: {type: string}
+        account_id: {type: string}
+        name: {type: string}
+        display_name: {type: string}
+        role: {type: [string, "null"]}
+        total: {type: [integer, "null"], minimum: 0}
+        unread: {type: [integer, "null"], minimum: 0}
+        selectable: {type: boolean}
+    Address:
+      type: object
+      required: [email]
+      properties:
+        name: {type: [string, "null"]}
+        email: {type: string}
+    MessageSummary:
+      type: object
+      required: [id, account_id, mailbox_id, subject, from, to, unread, flagged, has_attachments]
+      properties:
+        id: {type: string}
+        account_id: {type: string}
+        mailbox_id: {type: string}
+        subject: {type: string}
+        from: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        to: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        date: {type: [string, "null"]}
+        timestamp: {type: [integer, "null"]}
+        unread: {type: boolean}
+        flagged: {type: boolean}
+        has_attachments: {type: boolean}
+        preview: {type: [string, "null"]}
+    MessagePage:
+      type: object
+      required: [messages]
+      properties:
+        messages: {type: array, items: {$ref: "#/components/schemas/MessageSummary"}}
+        total: {type: [integer, "null"], minimum: 0}
+        next_offset: {type: [integer, "null"], minimum: 0}
+    Attachment:
+      type: object
+      required: [id, inline]
+      properties:
+        id: {type: string}
+        filename: {type: [string, "null"]}
+        content_type: {type: [string, "null"]}
+        size: {type: [integer, "null"], minimum: 0}
+        inline: {type: boolean}
+    MessageBody:
+      type: object
+      properties:
+        text: {type: [string, "null"]}
+        html: {type: [string, "null"]}
+    Message:
+      type: object
+      required: [id, account_id, mailbox_id, subject, from, to, cc, body, attachments, headers]
+      properties:
+        id: {type: string}
+        account_id: {type: string}
+        mailbox_id: {type: string}
+        subject: {type: string}
+        from: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        to: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        cc: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        date: {type: [string, "null"]}
+        message_id_header: {type: [string, "null"]}
+        in_reply_to: {type: [string, "null"]}
+        body: {$ref: "#/components/schemas/MessageBody"}
+        attachments: {type: array, items: {$ref: "#/components/schemas/Attachment"}}
+        headers: {type: object, additionalProperties: true}
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        account_ids: {type: array, items: {type: string}}
+        mailbox_id: {type: [string, "null"]}
+        query: {type: string, minLength: 1}
+        limit: {type: [integer, "null"], minimum: 1, maximum: 100}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            request_id: {type: [string, "null"]}

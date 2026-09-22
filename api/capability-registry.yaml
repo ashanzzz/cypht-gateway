@@ -1,0 +1,52 @@
+version: 1
+capabilities:
+  auth.login:
+    api: "POST /api/v1/auth/login"
+    cli: "cyphtctl login"
+    risk: auth
+  token.list:
+    api: "GET /api/v1/tokens"
+    cli: "cyphtctl tokens"
+    risk: read
+  token.create:
+    api: "POST /api/v1/tokens"
+    cli: "cyphtctl token-create"
+    risk: credential
+  token.revoke:
+    api: "DELETE /api/v1/tokens/{id}"
+    cli: "cyphtctl token-revoke"
+    risk: credential
+  identity.read:
+    api: "GET /api/v1/me"
+    cli: "cyphtctl me"
+    risk: read
+  account.list:
+    scope: accounts.read
+    api: "GET /api/v1/accounts"
+    cli: "cyphtctl accounts"
+    planned_mcp: mail_list_accounts
+    risk: read
+  mailbox.list:
+    scope: accounts.read
+    api: "GET /api/v1/accounts/{id}/mailboxes"
+    cli: "cyphtctl mailboxes"
+    planned_mcp: mail_list_mailboxes
+    risk: read
+  mail.list:
+    scope: mail.read
+    api: "GET /api/v1/messages"
+    cli: "cyphtctl inbox"
+    planned_mcp: mail_list
+    risk: read
+  mail.search:
+    scope: mail.search
+    api: "POST /api/v1/messages/search"
+    cli: "cyphtctl search"
+    planned_mcp: mail_search
+    risk: read
+  mail.read:
+    scope: mail.read
+    api: "GET /api/v1/messages/{id}"
+    cli: "cyphtctl read"
+    planned_mcp: mail_read
+    risk: read
