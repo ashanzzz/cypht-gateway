@@ -1,0 +1,12 @@
+[package]
+name = "cyphtctl"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap.workspace = true
+gateway-core = { path = "../../crates/gateway-core" }
+reqwest.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
