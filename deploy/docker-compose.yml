@@ -1,0 +1,11 @@
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      GATEWAY_BIND: 0.0.0.0:8080
+      RUST_LOG: gatewayd=info,tower_http=info
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

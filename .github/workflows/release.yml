@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/check-version.py
+
+  build:
+    needs: validate
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: linux-amd64
+          - os: macos-13
+            artifact: macos-amd64
+          - os: macos-14
+            artifact: macos-arm64
+          - os: windows-latest
+            artifact: windows-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        shell: bash
+        env:
+          BUILD_TIME: ${{ github.event.repository.updated_at }}
+        run: cargo build --release -p gatewayd -p cyphtctl
+      - name: Package Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir dist
+          cp target/release/gatewayd target/release/cyphtctl VERSION README.md dist/
+          tar -C dist -czf cypht-gateway-${{ github.ref_name }}-${{ matrix.artifact }}.tar.gz .
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/gatewayd.exe,target/release/cyphtctl.exe,VERSION,README.md dist/
+          Compress-Archive -Path dist/* -DestinationPath cypht-gateway-${{ github.ref_name }}-${{ matrix.artifact }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            *.tar.gz
+            *.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Source archive
+        run: |
+          git archive --format=zip --prefix="cypht-gateway-${GITHUB_REF_NAME}/" -o "release-assets/cypht-gateway-${GITHUB_REF_NAME}-source.zip" "$GITHUB_REF_NAME"
+          cd release-assets
+          sha256sum * > SHA256SUMS
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag \
+            --generate-notes \
+            --title "Cypht Gateway $GITHUB_REF_NAME"
