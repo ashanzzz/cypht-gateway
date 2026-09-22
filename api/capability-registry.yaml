@@ -26,6 +26,12 @@ capabilities:
     cli: "cyphtctl accounts"
     planned_mcp: mail_list_accounts
     risk: read
+  profile.list:
+    scope: mail.send
+    api: "GET /api/v1/profiles"
+    cli: "cyphtctl profiles"
+    planned_mcp: mail_list_profiles
+    risk: read
   mailbox.list:
     scope: accounts.read
     api: "GET /api/v1/accounts/{id}/mailboxes"
@@ -50,3 +56,69 @@ capabilities:
     cli: "cyphtctl read"
     planned_mcp: mail_read
     risk: read
+  attachment.read:
+    scope: attachments.read
+    api: "GET /api/v1/attachments/{id}"
+    cli: "cyphtctl attachment"
+    planned_mcp: mail_get_attachment
+    risk: read
+  attachment.upload:
+    scope: mail.send
+    api: "POST /api/v1/uploads"
+    cli: "cyphtctl upload"
+    planned_mcp: mail_upload_attachment
+    risk: write
+  mail.send:
+    scope: mail.send
+    api: "POST /api/v1/messages/send"
+    cli: "cyphtctl send"
+    planned_mcp: mail_send
+    risk: external_write
+    idempotency_required: true
+  mail.draft:
+    scope: mail.send
+    api: "POST /api/v1/drafts"
+    cli: "cyphtctl draft"
+    planned_mcp: mail_create_draft
+    risk: write
+    idempotency_required: true
+  mail.reply:
+    scope: mail.send
+    additional_scopes: [mail.read]
+    api: "POST /api/v1/messages/{id}/reply"
+    cli: "cyphtctl reply"
+    planned_mcp: mail_reply
+    risk: external_write
+    idempotency_required: true
+  mail.forward:
+    scope: mail.send
+    additional_scopes: [mail.read]
+    api: "POST /api/v1/messages/{id}/forward"
+    cli: "cyphtctl forward"
+    planned_mcp: mail_forward
+    risk: external_write
+    idempotency_required: true
+  mail.modify:
+    scope: mail.modify
+    api: "PATCH /api/v1/messages/{id}"
+    cli: "cyphtctl mark-read|mark-unread|flag|unflag"
+    planned_mcp: mail_update
+    risk: write
+  mail.move:
+    scope: mail.modify
+    api: "POST /api/v1/messages/{id}/move"
+    cli: "cyphtctl move"
+    planned_mcp: mail_move
+    risk: write
+  mail.archive:
+    scope: mail.modify
+    api: "POST /api/v1/messages/{id}/archive"
+    cli: "cyphtctl archive"
+    planned_mcp: mail_archive
+    risk: write
+  mail.delete:
+    scope: mail.delete
+    api: "DELETE /api/v1/messages/{id}"
+    cli: "cyphtctl delete --yes"
+    planned_mcp: mail_delete
+    risk: destructive

@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cypht Gateway</title>
   <style>
-    :root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color-scheme:light dark}body{margin:0;background:#111318;color:#e9edf3}main{max-width:1100px;margin:auto;padding:28px}section{background:#191d24;border:1px solid #303642;border-radius:12px;padding:20px;margin:16px 0}h1,h2{margin-top:0}input,select,button,textarea{font:inherit;padding:9px 11px;border-radius:8px;border:1px solid #414957;background:#11151b;color:inherit}button{cursor:pointer;background:#293444}button.primary{background:#315eaa}button.danger{background:#7c3030}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grow{flex:1}.hidden{display:none}.muted{color:#9da8b8;font-size:.9rem}.error{white-space:pre-wrap;color:#ff9b9b}.ok{color:#86dfa5}.token{font-family:ui-monospace,monospace;word-break:break-all;padding:12px;background:#0e1116;border-radius:8px}.card{padding:12px;border:1px solid #303642;border-radius:9px;margin:8px 0}.mail{cursor:pointer}.mail:hover{border-color:#60708a}.subject{font-weight:650}.meta{font-size:.88rem;color:#aeb8c6}.body{white-space:pre-wrap;max-height:480px;overflow:auto;background:#0e1116;padding:14px;border-radius:8px}label{display:flex;gap:6px;align-items:center}.scopes{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}code{font-family:ui-monospace,monospace}@media(max-width:600px){main{padding:14px}.row>*{width:100%}}
+    :root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color-scheme:light dark}body{margin:0;background:#111318;color:#e9edf3}main{max-width:1180px;margin:auto;padding:28px}section{background:#191d24;border:1px solid #303642;border-radius:12px;padding:20px;margin:16px 0}h1,h2,h3{margin-top:0}input,select,button,textarea{font:inherit;padding:9px 11px;border-radius:8px;border:1px solid #414957;background:#11151b;color:inherit}textarea{width:100%;min-height:170px;box-sizing:border-box}button{cursor:pointer;background:#293444}button.primary{background:#315eaa}button.danger{background:#7c3030}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grow{flex:1}.hidden{display:none!important}.muted{color:#9da8b8;font-size:.9rem}.error{white-space:pre-wrap;color:#ff9b9b}.ok{color:#86dfa5}.token{font-family:ui-monospace,monospace;word-break:break-all;padding:12px;background:#0e1116;border-radius:8px}.card{padding:12px;border:1px solid #303642;border-radius:9px;margin:8px 0}.mail{cursor:pointer}.mail:hover{border-color:#60708a}.subject{font-weight:650}.meta{font-size:.88rem;color:#aeb8c6;white-space:pre-wrap}.body{white-space:pre-wrap;max-height:480px;overflow:auto;background:#0e1116;padding:14px;border-radius:8px}label{display:flex;gap:6px;align-items:center}.scopes{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.compose-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.compose-grid .wide{grid-column:1/-1}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}code{font-family:ui-monospace,monospace}@media(max-width:700px){main{padding:14px}.row>*{width:100%}.compose-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
 <main>
   <h1>Cypht Gateway <span id="version" class="muted"></span></h1>
-  <p class="muted">v0.2 管理台。公共操作全部经过 Rust API；浏览器不会直接访问 Cypht Bridge。</p>
+  <p class="muted">v0.3 管理台。浏览器只访问 Rust REST API，不直接访问 Cypht Bridge。</p>
 
   <section id="loginPanel">
     <h2>登录 Cypht</h2>
@@ -24,21 +24,17 @@
   </section>
 
   <div id="app" class="hidden">
-    <section>
-      <div class="row"><div class="grow"><h2>会话</h2><div id="me" class="muted"></div></div><button id="logout">退出</button></div>
-    </section>
+    <section><div class="row"><div class="grow"><h2>会话</h2><div id="me" class="muted"></div></div><button id="logout">退出</button></div></section>
 
     <section>
       <h2>API Tokens</h2>
       <form id="tokenForm">
         <div class="row"><input id="tokenName" class="grow" placeholder="名称，例如 Claude Read-only" required><input id="tokenDays" type="number" min="1" max="3650" value="365" placeholder="有效天数"></div>
         <div class="scopes" id="scopeList"></div>
-        <h3>允许访问的邮箱</h3>
-        <div class="scopes" id="tokenAccountList"></div>
-        <p class="muted">不选择邮箱表示允许访问当前用户的全部邮箱。默认不给发送、修改、删除或 Token 管理权限。Token 只在创建后显示一次。</p>
-        <button class="primary">创建 Token</button>
+        <h3>允许访问的邮箱</h3><div class="scopes" id="tokenAccountList"></div>
+        <p class="muted">不选择邮箱表示允许当前用户全部邮箱。Token 只显示一次。</p><button class="primary">创建 Token</button>
       </form>
-      <div id="newToken" class="hidden"><h3>新 Token</h3><div id="newTokenValue" class="token"></div><p class="muted">立即复制并保存。刷新页面后无法恢复。</p></div>
+      <div id="newToken" class="hidden"><h3>新 Token</h3><div id="newTokenValue" class="token"></div><p class="muted">立即复制并保存。</p></div>
       <div id="tokens"></div>
     </section>
 
@@ -47,16 +43,36 @@
       <div id="accounts"></div>
     </section>
 
+    <section id="composePanel">
+      <div class="row"><div class="grow"><h2>写邮件 <span id="composeMode" class="muted">新邮件</span></h2></div><button id="composeReset">重置</button></div>
+      <div class="compose-grid">
+        <select id="composeProfile" class="wide"></select>
+        <input id="composeTo" class="wide" placeholder="To，多个地址用逗号分隔">
+        <input id="composeCc" placeholder="Cc"><input id="composeBcc" placeholder="Bcc">
+        <input id="composeSubject" class="wide" placeholder="Subject">
+        <textarea id="composeBody" class="wide" placeholder="邮件正文"></textarea>
+        <input id="composeSchedule" class="wide" type="datetime-local" title="留空立即发送">
+        <input id="composeFiles" class="wide" type="file" multiple>
+      </div>
+      <div id="composeUploads"></div>
+      <div class="actions"><button id="sendMail" class="primary">发送</button><button id="saveDraft">保存草稿</button></div>
+      <div id="composeStatus" class="muted"></div><div id="composeError" class="error"></div>
+    </section>
+
     <section>
       <div class="row"><div class="grow"><h2>统一收件箱</h2></div><button id="refreshInbox">刷新</button></div>
       <form id="searchForm" class="row"><input id="searchQuery" class="grow" placeholder="跨账户搜索"><button>搜索</button></form>
-      <div id="mailError" class="error"></div>
-      <div id="messages"></div>
+      <div id="mailError" class="error"></div><div id="messages"></div>
     </section>
 
     <section id="reader" class="hidden">
-      <h2 id="readerSubject"></h2>
-      <div id="readerMeta" class="meta"></div>
+      <h2 id="readerSubject"></h2><div id="readerMeta" class="meta"></div>
+      <div class="actions">
+        <button id="reply">回复</button><button id="replyAll">全部回复</button><button id="forward">转发</button>
+        <button id="markRead">已读</button><button id="markUnread">未读</button><button id="flag">星标</button><button id="unflag">取消星标</button>
+        <button id="archive">归档</button><button id="deleteMail" class="danger">删除</button>
+      </div>
+      <div class="row"><select id="moveMailbox" class="grow"></select><button id="moveMail">移动</button></div>
       <h3>正文</h3><div id="readerBody" class="body"></div>
       <h3>附件</h3><div id="readerAttachments"></div>
     </section>
@@ -67,44 +83,44 @@
 const $=id=>document.getElementById(id);
 const scopes=['accounts.read','mail.read','mail.search','attachments.read','mail.send','mail.modify','mail.delete','tokens.manage'];
 let accessToken=sessionStorage.getItem('cyphtGatewayAccessToken')||'';
+let accounts=[],profiles=[],uploads=[],currentMessage=null,composeAction='send';
 
-async function api(path, options={}){
-  const headers={'Content-Type':'application/json',...(options.headers||{})};
-  if(accessToken) headers.Authorization=`Bearer ${accessToken}`;
-  const res=await fetch(path,{...options,headers});
-  if(res.status===204)return null;
-  const body=await res.json().catch(()=>({error:{message:`HTTP ${res.status}`}}));
-  if(!res.ok)throw new Error(body?.error?.message||`HTTP ${res.status}`);
-  return body;
-}
-function setText(el,value){el.textContent=value??''}
-function clear(el){while(el.firstChild)el.removeChild(el.firstChild)}
-function card(parent){const d=document.createElement('div');d.className='card';parent.appendChild(d);return d}
-function formatAddresses(v){return (v||[]).map(x=>x.name?`${x.name} <${x.email}>`:x.email).join(', ')}
+async function api(path,options={}){const headers={'Content-Type':'application/json',...(options.headers||{})};if(accessToken)headers.Authorization=`Bearer ${accessToken}`;const res=await fetch(path,{...options,headers});if(res.status===204)return null;const body=await res.json().catch(()=>({error:{message:`HTTP ${res.status}`}}));if(!res.ok)throw new Error(body?.error?.message||`HTTP ${res.status}`);return body}
+async function raw(path,options={}){const headers={...(options.headers||{})};if(accessToken)headers.Authorization=`Bearer ${accessToken}`;const res=await fetch(path,{...options,headers});if(!res.ok){const body=await res.json().catch(()=>({error:{message:`HTTP ${res.status}`}}));throw new Error(body?.error?.message||`HTTP ${res.status}`)}return res}
+const setText=(el,v)=>el.textContent=v??'';const clear=el=>{while(el.firstChild)el.removeChild(el.firstChild)};function card(parent){const d=document.createElement('div');d.className='card';parent.appendChild(d);return d}function formatAddresses(v){return(v||[]).map(x=>x.name?`${x.name} <${x.email}>`:x.email).join(', ')}
+function splitAddresses(v){return v.split(',').map(x=>x.trim()).filter(Boolean).map(email=>({email}))}function idem(){return globalThis.crypto?.randomUUID?.()||`web-${Date.now()}-${Math.random().toString(16).slice(2)}`}
 
-async function bootstrap(){
-  try{const v=await api('/api/v1/meta/version');setText($('version'),`v${v.version} · ${v.git_short_sha}`)}catch{}
-  clear($('scopeList'));
-  scopes.forEach(s=>{const l=document.createElement('label'),i=document.createElement('input');i.type='checkbox';i.value=s;i.checked=['accounts.read','mail.read','mail.search','attachments.read'].includes(s);l.append(i,document.createTextNode(s));$('scopeList').appendChild(l)});
-  if(accessToken){try{await enterApp()}catch{accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken')}}
-}
-
+async function bootstrap(){try{const v=await api('/api/v1/meta/version');setText($('version'),`v${v.version} · ${v.git_short_sha}`)}catch{}clear($('scopeList'));scopes.forEach(s=>{const l=document.createElement('label'),i=document.createElement('input');i.type='checkbox';i.value=s;i.checked=['accounts.read','mail.read','mail.search','attachments.read'].includes(s);l.append(i,document.createTextNode(s));$('scopeList').appendChild(l)});if(accessToken){try{await enterApp()}catch{accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken')}}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();setText($('loginError'),'');try{const r=await api('/api/v1/auth/login',{method:'POST',body:JSON.stringify({username:$('username').value,password:$('password').value})});accessToken=r.access_token;sessionStorage.setItem('cyphtGatewayAccessToken',accessToken);$('password').value='';await enterApp()}catch(err){setText($('loginError'),err.message)}});
-$('logout').addEventListener('click',async()=>{try{await api('/api/v1/auth/logout',{method:'POST'})}catch{}accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken');$('app').classList.add('hidden');$('loginPanel').classList.remove('hidden')});
+$('logout').onclick=async()=>{try{await api('/api/v1/auth/logout',{method:'POST'})}catch{}accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken');$('app').classList.add('hidden');$('loginPanel').classList.remove('hidden')};
+async function enterApp(){const me=await api('/api/v1/me');$('loginPanel').classList.add('hidden');$('app').classList.remove('hidden');setText($('me'),`${me.username} · ${me.auth_kind} · ${me.scopes.join(', ')}`);await Promise.all([loadTokens(),loadAccounts(),loadProfiles(),loadInbox()])}
 
-async function enterApp(){const me=await api('/api/v1/me');$('loginPanel').classList.add('hidden');$('app').classList.remove('hidden');setText($('me'),`${me.username} · ${me.auth_kind}`);await Promise.all([loadTokens(),loadAccounts(),loadInbox()])}
+$('tokenForm').addEventListener('submit',async e=>{e.preventDefault();const selected=[...$('scopeList').querySelectorAll('input:checked')].map(x=>x.value);const accountAllowlist=[...$('tokenAccountList').querySelectorAll('input:checked')].map(x=>x.value);try{const r=await api('/api/v1/tokens',{method:'POST',body:JSON.stringify({name:$('tokenName').value,scopes:selected,account_allowlist:accountAllowlist,expires_in_days:Number($('tokenDays').value)||null})});setText($('newTokenValue'),r.token);$('newToken').classList.remove('hidden');$('tokenName').value='';await loadTokens()}catch(err){alert(err.message)}});
+async function loadTokens(){const rows=await api('/api/v1/tokens');clear($('tokens'));rows.forEach(t=>{const d=card($('tokens')),top=document.createElement('div');top.className='row';const text=document.createElement('div');text.className='grow';setText(text,`${t.name} · ${t.prefix}`);const b=document.createElement('button');b.className='danger';b.textContent=t.revoked_at?'已撤销':'撤销';b.disabled=!!t.revoked_at;b.onclick=async()=>{if(confirm(`撤销 ${t.name}?`)){await api(`/api/v1/tokens/${encodeURIComponent(t.id)}`,{method:'DELETE'});await loadTokens()}};top.append(text,b);d.append(top);const m=document.createElement('div');m.className='meta';setText(m,`scopes: ${t.scopes.join(', ')}\nlast used: ${t.last_used_at||'never'} · expires: ${t.expires_at||'never'}`);d.append(m)})}
 
-$('tokenForm').addEventListener('submit',async e=>{e.preventDefault();const selected=[...$('scopeList').querySelectorAll('input:checked')].map(x=>x.value);const accountAllowlist=[...$('tokenAccountList').querySelectorAll('input:checked')].map(x=>x.value);const days=Number($('tokenDays').value)||null;try{const r=await api('/api/v1/tokens',{method:'POST',body:JSON.stringify({name:$('tokenName').value,scopes:selected,account_allowlist:accountAllowlist,expires_in_days:days})});setText($('newTokenValue'),r.token);$('newToken').classList.remove('hidden');$('tokenName').value='';await loadTokens()}catch(err){alert(err.message)}});
-async function loadTokens(){const rows=await api('/api/v1/tokens');clear($('tokens'));rows.forEach(t=>{const d=card($('tokens'));const top=document.createElement('div');top.className='row';const text=document.createElement('div');text.className='grow';setText(text,`${t.name} · ${t.prefix}`);const b=document.createElement('button');b.className='danger';b.textContent=t.revoked_at?'已撤销':'撤销';b.disabled=!!t.revoked_at;b.onclick=async()=>{if(confirm(`撤销 ${t.name}?`)){await api(`/api/v1/tokens/${encodeURIComponent(t.id)}`,{method:'DELETE'});await loadTokens()}};top.append(text,b);d.append(top);const m=document.createElement('div');m.className='meta';setText(m,`scopes: ${t.scopes.join(', ')} · last used: ${t.last_used_at||'never'} · expires: ${t.expires_at||'never'}`);d.append(m)})}
+$('refreshAccounts').onclick=loadAccounts;async function loadAccounts(){accounts=await api('/api/v1/accounts');clear($('accounts'));clear($('tokenAccountList'));accounts.forEach(a=>{const d=card($('accounts')),n=document.createElement('div'),m=document.createElement('div');n.className='subject';m.className='meta';setText(n,a.name);setText(m,`${a.email||''} · ${a.protocol} · ${a.server||''}${a.can_send?' · 可发送':''}`);d.append(n,m);const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=a.id;label.append(input,document.createTextNode(a.email?`${a.name} (${a.email})`:a.name));$('tokenAccountList').appendChild(label)})}
+async function loadProfiles(){try{profiles=await api('/api/v1/profiles')}catch{profiles=[]}clear($('composeProfile'));profiles.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=`${p.name} · ${p.address}`;o.selected=p.is_default;$('composeProfile').appendChild(o)})}
 
-$('refreshAccounts').onclick=loadAccounts;
-async function loadAccounts(){const rows=await api('/api/v1/accounts');clear($('accounts'));clear($('tokenAccountList'));rows.forEach(a=>{const d=card($('accounts'));const n=document.createElement('div');n.className='subject';setText(n,a.name);const m=document.createElement('div');m.className='meta';setText(m,`${a.email||''} · ${a.protocol} · ${a.server||''}`);d.append(n,m);const label=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.value=a.id;label.append(input,document.createTextNode(a.email?`${a.name} (${a.email})`:a.name));$('tokenAccountList').appendChild(label)})}
+$('composeFiles').addEventListener('change',async()=>{setText($('composeError'),'');for(const file of $('composeFiles').files){try{const r=await raw('/api/v1/uploads',{method:'POST',headers:{'X-Filename':file.name,'Content-Type':file.type||'application/octet-stream'},body:file});const u=await r.json();uploads.push(u)}catch(err){setText($('composeError'),err.message)}}$('composeFiles').value='';renderUploads()});
+function renderUploads(){clear($('composeUploads'));uploads.forEach((u,i)=>{const d=card($('composeUploads')),b=document.createElement('button');b.textContent='移除';b.onclick=()=>{uploads.splice(i,1);renderUploads()};d.append(document.createTextNode(`${u.filename} · ${u.size} bytes `),b)})}
+function resetCompose(){composeAction='send';currentComposeSource=null;uploads=[];['composeTo','composeCc','composeBcc','composeSubject','composeBody','composeSchedule'].forEach(id=>$(id).value='');setText($('composeMode'),'新邮件');setText($('composeStatus'),'');setText($('composeError'),'');renderUploads()}
+let currentComposeSource=null;$('composeReset').onclick=resetCompose;
+function composePayload(){return{profile_id:$('composeProfile').value||null,to:splitAddresses($('composeTo').value),cc:splitAddresses($('composeCc').value),bcc:splitAddresses($('composeBcc').value),subject:$('composeSubject').value,body:{text:$('composeBody').value,html:null},attachment_ids:uploads.map(x=>x.id),schedule_at:$('composeSchedule').value||null,delivery_receipt:false}}
+$('sendMail').onclick=async()=>{setText($('composeError'),'');setText($('composeStatus'),'正在提交…');try{let path='/api/v1/messages/send',payload=composePayload();if(composeAction==='reply'||composeAction==='reply_all'){path=`/api/v1/messages/${encodeURIComponent(currentComposeSource)}/reply`;payload={profile_id:payload.profile_id,reply_all:composeAction==='reply_all',body:payload.body,attachment_ids:payload.attachment_ids,schedule_at:payload.schedule_at}}else if(composeAction==='forward'){path=`/api/v1/messages/${encodeURIComponent(currentComposeSource)}/forward`;payload={profile_id:payload.profile_id,to:payload.to,cc:payload.cc,bcc:payload.bcc,body:payload.body,attachment_ids:payload.attachment_ids,schedule_at:payload.schedule_at}}const r=await api(path,{method:'POST',headers:{'Idempotency-Key':idem()},body:JSON.stringify(payload)});resetCompose();setText($('composeStatus'),`${r.status}${r.message_id_header?` · ${r.message_id_header}`:''}`);await loadInbox()}catch(err){setText($('composeStatus'),'');setText($('composeError'),err.message)}};
+$('saveDraft').onclick=async()=>{setText($('composeError'),'');try{const r=await api('/api/v1/drafts',{method:'POST',headers:{'Idempotency-Key':idem()},body:JSON.stringify(composePayload())});resetCompose();setText($('composeStatus'),`草稿已保存 · ${r.status}`)}catch(err){setText($('composeError'),err.message)}};
 
-$('refreshInbox').onclick=loadInbox;
-$('searchForm').addEventListener('submit',async e=>{e.preventDefault();const q=$('searchQuery').value.trim();if(!q)return loadInbox();await loadMessages(()=>api('/api/v1/messages/search',{method:'POST',body:JSON.stringify({account_ids:[],query:q,limit:50})}))});
-async function loadInbox(){await loadMessages(()=>api('/api/v1/messages?limit=50'))}
-async function loadMessages(loader){setText($('mailError'),'');try{const page=await loader();clear($('messages'));(page.messages||[]).forEach(m=>{const d=card($('messages'));d.classList.add('mail');d.onclick=()=>readMessage(m.id);const s=document.createElement('div');s.className='subject';setText(s,m.subject||'(无主题)');const meta=document.createElement('div');meta.className='meta';setText(meta,`${formatAddresses(m.from)} · ${m.date||''}${m.unread?' · 未读':''}${m.has_attachments?' · 附件':''}`);const p=document.createElement('div');setText(p,m.preview||'');d.append(s,meta,p)})}catch(err){setText($('mailError'),err.message)}}
-async function readMessage(id){try{const m=await api(`/api/v1/messages/${encodeURIComponent(id)}`);$('reader').classList.remove('hidden');setText($('readerSubject'),m.subject||'(无主题)');setText($('readerMeta'),`From: ${formatAddresses(m.from)}\nTo: ${formatAddresses(m.to)}\n${m.date||''}`);setText($('readerBody'),m.body?.text||'[无纯文本正文]');clear($('readerAttachments'));(m.attachments||[]).forEach(a=>{const d=card($('readerAttachments'));setText(d,`${a.filename||'(unnamed)'} · ${a.content_type||'application/octet-stream'} · ${a.size??'?'} bytes`)})}catch(err){setText($('mailError'),err.message)}}
+$('refreshInbox').onclick=loadInbox;$('searchForm').addEventListener('submit',async e=>{e.preventDefault();const q=$('searchQuery').value.trim();if(!q)return loadInbox();await loadMessages(()=>api('/api/v1/messages/search',{method:'POST',body:JSON.stringify({account_ids:[],query:q,limit:50})}))});async function loadInbox(){await loadMessages(()=>api('/api/v1/messages?limit=50'))}
+async function loadMessages(loader){setText($('mailError'),'');try{const page=await loader();clear($('messages'));(page.messages||[]).forEach(m=>{const d=card($('messages'));d.classList.add('mail');d.onclick=()=>readMessage(m.id);const s=document.createElement('div');s.className='subject';setText(s,m.subject||'(无主题)');const meta=document.createElement('div');meta.className='meta';setText(meta,`${formatAddresses(m.from)} · ${m.date||''}${m.unread?' · 未读':''}${m.flagged?' · ★':''}${m.has_attachments?' · 附件':''}`);const p=document.createElement('div');setText(p,m.preview||'');d.append(s,meta,p)})}catch(err){setText($('mailError'),err.message)}}
+async function readMessage(id){try{const m=await api(`/api/v1/messages/${encodeURIComponent(id)}`);currentMessage=m;$('reader').classList.remove('hidden');setText($('readerSubject'),m.subject||'(无主题)');setText($('readerMeta'),`From: ${formatAddresses(m.from)}\nTo: ${formatAddresses(m.to)}\n${m.date||''}`);setText($('readerBody'),m.body?.text||'[无纯文本正文]');clear($('readerAttachments'));(m.attachments||[]).forEach(a=>{const d=card($('readerAttachments')),b=document.createElement('button');setText(d,`${a.filename||'(unnamed)'} · ${a.content_type||'application/octet-stream'} · ${a.size??'?'} bytes `);b.textContent='下载';b.onclick=()=>downloadAttachment(a);d.appendChild(b)});await loadMoveMailboxes(m.account_id)}catch(err){setText($('mailError'),err.message)}}
+async function downloadAttachment(a){try{const res=await raw(`/api/v1/attachments/${encodeURIComponent(a.id)}`);const blob=await res.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=a.filename||'attachment.bin';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(err){setText($('mailError'),err.message)}}
+async function loadMoveMailboxes(accountId){clear($('moveMailbox'));try{const rows=await api(`/api/v1/accounts/${encodeURIComponent(accountId)}/mailboxes`);rows.filter(x=>x.selectable).forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.display_name||m.name;$('moveMailbox').appendChild(o)})}catch{}}
+function beginReply(mode){if(!currentMessage)return;resetCompose();composeAction=mode;currentComposeSource=currentMessage.id;setText($('composeMode'),mode==='reply'?'回复':mode==='reply_all'?'全部回复':'转发');if(mode==='forward')$('composeTo').focus();else $('composeBody').focus();window.scrollTo({top:$('composePanel').offsetTop-10,behavior:'smooth'})}
+$('reply').onclick=()=>beginReply('reply');$('replyAll').onclick=()=>beginReply('reply_all');$('forward').onclick=()=>beginReply('forward');
+async function patchCurrent(payload){if(!currentMessage)return;await api(`/api/v1/messages/${encodeURIComponent(currentMessage.id)}`,{method:'PATCH',body:JSON.stringify(payload)});await readMessage(currentMessage.id);await loadInbox()}
+$('markRead').onclick=()=>patchCurrent({seen:true});$('markUnread').onclick=()=>patchCurrent({seen:false});$('flag').onclick=()=>patchCurrent({flagged:true});$('unflag').onclick=()=>patchCurrent({flagged:false});
+$('archive').onclick=async()=>{if(!currentMessage)return;try{await api(`/api/v1/messages/${encodeURIComponent(currentMessage.id)}/archive`,{method:'POST'});$('reader').classList.add('hidden');await loadInbox()}catch(err){setText($('mailError'),err.message)}};
+$('moveMail').onclick=async()=>{if(!currentMessage||!$('moveMailbox').value)return;try{await api(`/api/v1/messages/${encodeURIComponent(currentMessage.id)}/move`,{method:'POST',body:JSON.stringify({mailbox_id:$('moveMailbox').value})});$('reader').classList.add('hidden');await loadInbox()}catch(err){setText($('mailError'),err.message)}};
+$('deleteMail').onclick=async()=>{if(!currentMessage||!confirm('删除这封邮件？通常会先进入 Trash。'))return;try{await api(`/api/v1/messages/${encodeURIComponent(currentMessage.id)}`,{method:'DELETE'});$('reader').classList.add('hidden');await loadInbox()}catch(err){setText($('mailError'),err.message)}};
 bootstrap();
 </script>
 </body>

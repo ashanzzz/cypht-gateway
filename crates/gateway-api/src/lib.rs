@@ -1,7 +1,8 @@
 use axum::{
+    body::{Body, Bytes},
     extract::{Path, Query, State},
     http::{
-        header::{AUTHORIZATION, CACHE_CONTROL},
+        header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE},
         HeaderMap, HeaderValue, StatusCode,
     },
     response::{Html, IntoResponse, Response},
@@ -9,7 +10,11 @@ use axum::{
     Json, Router,
 };
 use gateway_auth::{DEFAULT_AI_SCOPES, Principal};
-use gateway_core::{ApiErrorBody, ApiErrorDetail, BuildInfo, CreateTokenRequest, GatewayError, LoginRequest, MeResponse, SearchRequest};
+use gateway_core::{
+    ApiErrorBody, ApiErrorDetail, BuildInfo, CreateTokenRequest, ForwardMessageRequest,
+    GatewayError, LoginRequest, MeResponse, MessageUpdateRequest, MoveMessageRequest,
+    ReplyMessageRequest, SearchRequest, SendMessageRequest,
+};
 use gateway_domain::GatewayService;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -37,14 +42,23 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/tokens/{id}", delete(tokens_revoke))
         .route("/api/v1/accounts", get(accounts))
         .route("/api/v1/accounts/{id}/mailboxes", get(mailboxes))
+        .route("/api/v1/profiles", get(profiles))
+        .route("/api/v1/uploads", post(upload))
+        .route("/api/v1/attachments/{id}", get(attachment))
         .route("/api/v1/messages/search", post(search))
+        .route("/api/v1/messages/send", post(send_message))
         .route("/api/v1/messages", get(messages))
-        .route("/api/v1/messages/{id}", get(message))
+        .route("/api/v1/messages/{id}", get(message).patch(update_message).delete(delete_message))
+        .route("/api/v1/messages/{id}/reply", post(reply_message))
+        .route("/api/v1/messages/{id}/forward", post(forward_message))
+        .route("/api/v1/messages/{id}/move", post(move_message))
+        .route("/api/v1/messages/{id}/archive", post(archive_message))
+        .route("/api/v1/drafts", post(create_draft))
         .layer(SetResponseHeaderLayer::if_not_present(
             CACHE_CONTROL,
             HeaderValue::from_static("no-store"),
         ))
-        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
+        .layer(RequestBodyLimitLayer::new(25 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
         .with_state(Arc::new(state))
 }
@@ -76,7 +90,10 @@ async fn me(State(state): State<Arc<ApiState>>, headers: HeaderMap) -> ApiResult
     let principal = principal(&state, &headers)?;
     Ok(Json(MeResponse {
         username: principal.username,
-        auth_kind: match principal.auth_kind { gateway_auth::AuthKind::Session => "session", gateway_auth::AuthKind::Pat => "pat" }.into(),
+        auth_kind: match principal.auth_kind {
+            gateway_auth::AuthKind::Session => "session",
+            gateway_auth::AuthKind::Pat => "pat",
+        }.into(),
         scopes: principal.scopes,
     }))
 }
@@ -104,6 +121,11 @@ async fn tokens_revoke(State(state): State<Arc<ApiState>>, headers: HeaderMap, P
 async fn accounts(State(state): State<Arc<ApiState>>, headers: HeaderMap) -> ApiResult<impl IntoResponse> {
     let principal = principal(&state, &headers)?;
     Ok(Json(state.service.accounts(&principal).await?))
+}
+
+async fn profiles(State(state): State<Arc<ApiState>>, headers: HeaderMap) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok(Json(state.service.profiles(&principal).await?))
 }
 
 async fn mailboxes(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>) -> ApiResult<impl IntoResponse> {
@@ -140,6 +162,77 @@ async fn message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id
     Ok(Json(state.service.message(&principal, &id).await?))
 }
 
+async fn attachment(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>) -> ApiResult<Response> {
+    let principal = principal(&state, &headers)?;
+    let download = state.service.attachment(&principal, &id).await?;
+    let mut builder = Response::builder().status(StatusCode::OK);
+    if let Some(content_type) = download.content_type.as_deref() {
+        if let Ok(value) = HeaderValue::from_str(content_type) {
+            builder = builder.header(CONTENT_TYPE, value);
+        }
+    }
+    if let Some(filename) = download.filename.as_deref() {
+        let safe = filename.replace('\r', "").replace('\n', "").replace('\"', "");
+        if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{safe}\"")) {
+            builder = builder.header(CONTENT_DISPOSITION, value);
+        }
+    }
+    builder.body(Body::from(download.bytes)).map_err(|e| ApiError(GatewayError::Internal(format!("build attachment response: {e}"))))
+}
+
+async fn upload(State(state): State<Arc<ApiState>>, headers: HeaderMap, body: Bytes) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    let filename = header_text(&headers, "x-filename")
+        .ok_or_else(|| ApiError(GatewayError::InvalidRequest("X-Filename header is required".into())))?.to_string();
+    let content_type = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("application/octet-stream").to_string();
+    let result = state.service.upload(&principal, &filename, &content_type, &body).await?;
+    Ok((StatusCode::CREATED, Json(result)))
+}
+
+async fn send_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Json(request): Json<SendMessageRequest>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    let key = idempotency_key(&headers)?;
+    Ok(Json(state.service.send(&principal, request, key).await?))
+}
+
+async fn create_draft(State(state): State<Arc<ApiState>>, headers: HeaderMap, Json(request): Json<SendMessageRequest>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    let key = idempotency_key(&headers)?;
+    Ok((StatusCode::CREATED, Json(state.service.draft(&principal, request, key).await?)))
+}
+
+async fn reply_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>, Json(request): Json<ReplyMessageRequest>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    let key = idempotency_key(&headers)?;
+    Ok(Json(state.service.reply(&principal, &id, request, key).await?))
+}
+
+async fn forward_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>, Json(request): Json<ForwardMessageRequest>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    let key = idempotency_key(&headers)?;
+    Ok(Json(state.service.forward(&principal, &id, request, key).await?))
+}
+
+async fn update_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>, Json(request): Json<MessageUpdateRequest>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok(Json(state.service.update_message(&principal, &id, request).await?))
+}
+
+async fn move_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>, Json(request): Json<MoveMessageRequest>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok(Json(state.service.move_message(&principal, &id, request).await?))
+}
+
+async fn archive_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok(Json(state.service.archive_message(&principal, &id).await?))
+}
+
+async fn delete_message(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<String>) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok(Json(state.service.delete_message(&principal, &id).await?))
+}
+
 fn principal(state: &ApiState, headers: &HeaderMap) -> ApiResult<Principal> {
     Ok(state.service.authenticate(bearer(headers)?)?)
 }
@@ -147,6 +240,17 @@ fn principal(state: &ApiState, headers: &HeaderMap) -> ApiResult<Principal> {
 fn bearer(headers: &HeaderMap) -> ApiResult<&str> {
     let raw = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()).ok_or(GatewayError::Authentication)?;
     raw.strip_prefix("Bearer ").filter(|v| !v.is_empty()).ok_or(GatewayError::Authentication).map_err(ApiError)
+}
+
+fn idempotency_key(headers: &HeaderMap) -> ApiResult<&str> {
+    headers.get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ApiError(GatewayError::InvalidRequest("Idempotency-Key header is required".into())))
+}
+
+fn header_text<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers.get(name).and_then(|v| v.to_str().ok()).filter(|v| !v.is_empty())
 }
 
 struct ApiError(GatewayError);
