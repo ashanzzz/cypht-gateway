@@ -1,0 +1,39 @@
+openapi: 3.1.0
+info:
+  title: Cypht Gateway API
+  version: v1
+  description: Initial contract seed for Cypht Gateway. Mail endpoints will be added in later milestones.
+servers:
+  - url: /api/v1
+paths:
+  /meta/version:
+    get:
+      operationId: getVersion
+      summary: Return gateway build and Git metadata
+      responses:
+        "200":
+          description: Build metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildInfo"
+components:
+  schemas:
+    BuildInfo:
+      type: object
+      required: [version, git_sha, git_short_sha, git_dirty, api_version]
+      properties:
+        version:
+          type: string
+        git_sha:
+          type: string
+        git_short_sha:
+          type: string
+        git_tag:
+          type: [string, "null"]
+        git_dirty:
+          type: boolean
+        build_time:
+          type: [string, "null"]
+        api_version:
+          type: string
