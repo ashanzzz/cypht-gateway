@@ -4,27 +4,24 @@ Cypht Gateway is a Rust-first automation and AI gateway for Cypht. It exposes Cy
 
 The long-term product also includes MCP. REST v1 is the canonical contract; MCP and other AI surfaces will build on the same Rust domain services rather than reimplementing mail logic.
 
-## Current milestone: v0.2.0
+## Current milestone: v0.3.0
 
-v0.2.0 implements the first real end-to-end Cypht integration:
+v0.3.0 turns the read-only MVP into a full mail-operation gateway:
 
-- Cypht username/password login through Cypht's existing `api_login` module
-- private Cypht PHP bridge
-- encrypted SQLite gateway credential/session vault
-- short-lived access tokens
-- persistent PATs with scopes, expiry, revocation and account allow-lists
-- signed opaque object IDs
-- configured account listing
-- mailbox listing
-- one-account and unified inbox
-- cross-account search
-- parsed message reading
-- attachment metadata
-- browser management UI
-- expanded `cyphtctl`
-- Git/SemVer, GitHub CI, release automation and multi-architecture image builds
+- everything from v0.2 login, PAT, account allow-lists, opaque IDs and read/search APIs
+- Cypht sending profiles exposed through opaque profile IDs
+- temporary attachment upload and authenticated attachment download
+- send now and scheduled send through Cypht SMTP/Profile/MIME logic
+- drafts stored through the configured Cypht mailbox
+- reply, reply-all and forward APIs
+- required 24-hour idempotency protection for send/draft/reply/forward
+- mark read/unread and flag/unflag
+- move, archive and trash/delete
+- browser UI for compose, attachments and message actions
+- matching `cyphtctl` write commands
+- updated OpenAPI and capability registry
 
-Mail sending/mutation endpoints are intentionally scheduled for v0.3. The `mail.send`, `mail.modify` and `mail.delete` scopes are reserved now so the permission model does not need to be redesigned later.
+MCP remains the next product milestone. It will call these same Rust domain services rather than implement another mail stack.
 
 ## Architecture
 
@@ -99,6 +96,7 @@ Optional:
 GATEWAY_BIND=0.0.0.0:8080
 GATEWAY_DB_PATH=/var/lib/cypht-gateway/gateway.db
 GATEWAY_SESSION_TTL_SECONDS=3600
+# Cypht-side outgoing upload limit: GATEWAY_MAX_UPLOAD_BYTES=20971520
 RUST_LOG=gatewayd=info,tower_http=info
 ```
 
@@ -116,7 +114,7 @@ Open:
 http://127.0.0.1:8080/
 ```
 
-The built-in UI can log in to Cypht, create/revoke PATs, list configured accounts, view the unified inbox, search and read messages.
+The built-in UI can also compose, upload/download attachments, save drafts, schedule sends, reply/forward, change message state, move/archive and delete messages when the current token has the required scopes.
 
 ## REST examples
 
@@ -147,9 +145,14 @@ CYPHT_PASSWORD='...' cyphtctl login --username alice
 
 export CYPHT_GATEWAY_TOKEN='cypht_at_...'
 cyphtctl accounts
+cyphtctl profiles
 cyphtctl inbox
 cyphtctl search invoice
 cyphtctl read '<opaque-message-id>'
+cyphtctl upload ./report.pdf --content-type application/pdf
+cyphtctl send --to user@example.com --subject hello --body 'hello'
+cyphtctl reply '<opaque-message-id>' --body 'thanks'
+cyphtctl archive '<opaque-message-id>'
 cyphtctl token-create --name agent --scope accounts.read --scope mail.read --scope mail.search
 cyphtctl token-revoke tok_...
 ```

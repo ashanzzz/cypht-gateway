@@ -16,22 +16,20 @@
 - PAT management, scopes, expiry and revocation
 - opaque signed object IDs
 - accounts and mailboxes
-- unified inbox
-- search
+- unified inbox and search
 - parsed message body and attachment metadata
-- management UI
-- expanded CLI
+- management UI and expanded CLI
 
-## v0.3.x — complete mail writes
+## v0.3.x — complete mail writes ✓
 
 - SMTP/profile discovery
 - send/reply/reply-all/forward
 - upload/download attachments
-- drafts
-- scheduled send
+- drafts and scheduled send
 - flags/read/unread
-- move/copy/archive/trash/delete
-- idempotency keys for sending
+- move/archive/trash/delete
+- idempotency keys for external sends and draft creation
+- matching REST, CLI and browser UI operations
 
 ## v0.4.x — Cypht feature coverage
 
@@ -40,13 +38,13 @@
 - calendars/events
 - Sieve filters and block list
 - feeds
-- settings/profiles
+- settings/profile administration
 - optional PGP integration
 
 ## v0.5.x — AI and automation surfaces
 
 - MCP stdio and Streamable HTTP
-- complete CLI surface
+- complete AI-safe tool surface
 - SSE events
 - signed webhooks
 - audit UI

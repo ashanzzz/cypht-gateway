@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
+## [0.3.0] - 2026-09-22
+
+### Added
+
+- Sending-profile API with opaque profile IDs and account allow-list enforcement.
+- Temporary outgoing attachment upload and authenticated attachment download.
+- Send-now and scheduled-send APIs using Cypht's SMTP, OAuth refresh, MIME and Sent-folder logic.
+- Draft creation through Cypht mailbox storage.
+- Reply, reply-all and forward APIs.
+- Read/unread and flag/unflag updates.
+- Move, archive and trash/delete operations.
+- 24-hour SQLite idempotency records for send, draft, reply and forward.
+- Management UI compose flow, attachment transfers and message action controls.
+- Matching `cyphtctl` write commands.
+- Expanded OpenAPI and capability registry for all v0.3 mail operations.
+
+### Security
+
+- Public upload IDs are signed and bound to the authenticated gateway user.
+- Send-capable profiles are filtered through PAT account allow-lists.
+- Destructive delete remains isolated behind the `mail.delete` scope.
+- Outgoing temporary attachment files are encrypted with Cypht's request key, use mode `0600`, and are cleaned up after successful use or the stale-file TTL.
+- External sends atomically claim idempotency keys before SMTP; concurrent duplicates are blocked and keys cannot be reused with a different request body.
+
 ## [0.2.0] - 2026-09-22
 
 ### Added

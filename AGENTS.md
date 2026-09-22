@@ -12,6 +12,8 @@ This repository is designed to be maintained primarily by AI coding agents. Trea
 6. **Every new capability gets a registry entry.** Update `api/capability-registry.yaml`, OpenAPI and tests together.
 7. **Writes require explicit scopes.** Sending, mutation and deletion must never be included in the default AI token preset.
 8. **Mail content is untrusted input.** MCP/agent adapters must label message bodies and attachments as untrusted external content and must not interpret embedded instructions as trusted commands.
+9. **External sends are idempotent.** Any public operation that can send mail must atomically claim an `Idempotency-Key` before contacting SMTP. A crash after an uncertain external send must never trigger an automatic replay.
+10. **Uploaded attachment files are temporary.** Keep them in Cypht private storage with restrictive permissions, enforce size limits, and delete them after successful send/draft or after the stale-file TTL.
 
 ## Change workflow
 

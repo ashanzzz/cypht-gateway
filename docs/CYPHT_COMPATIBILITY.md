@@ -1,21 +1,24 @@
 # Cypht compatibility
 
-## v0.2 baseline
+## v0.3 baseline
 
-The default bridge image is pinned to Cypht `v2.12.2`. The bridge contract was reviewed against that tag's `api_login`, `Hm_IMAP_List`, `Hm_Mailbox` and AJAX-page APIs. Runtime integration still belongs in CI because this build environment does not contain a live Cypht instance.
-
+The default bridge image is pinned to Cypht `v2.12.2`. The bridge contract is reviewed against that tag's `api_login`, `Hm_IMAP_List`, `Hm_Mailbox`, `Hm_SMTP_List`, `Hm_Profiles`, `Hm_MIME_Msg`, scheduled-send and AJAX-page APIs.
 
 The bridge targets the current Cypht module architecture where:
 
-- `api_login` can create a Cypht session from username/password plus `API_LOGIN_KEY`.
+- `api_login` creates a Cypht session from username/password plus `API_LOGIN_KEY`.
 - `setup_base_ajax_page()` loads normal authenticated session context.
 - `Hm_IMAP_List` initializes configured IMAP/JMAP/EWS accounts.
-- `Hm_Mailbox` provides common folder, list, message and search operations.
+- `Hm_Mailbox` provides common folder, message and mutation operations.
+- `Hm_SMTP_List`, `Hm_Profiles` and `Hm_MIME_Msg` provide the existing send path.
+- Cypht's Scheduled mailbox and scheduler remain responsible for delivery of scheduled messages created by the gateway.
 
-The bridge deliberately calls these higher-level abstractions rather than provider-specific classes.
+The bridge deliberately calls these higher-level abstractions rather than provider-specific protocol classes.
 
 ## Compatibility policy before 1.0
 
-`0.x` releases may adjust the bridge for upstream Cypht changes without preserving the internal bridge RPC. Public REST `/api/v1` should remain stable whenever practical.
+`0.x` releases may adjust the private bridge RPC for upstream Cypht changes without preserving that internal RPC. Public REST `/api/v1` should remain stable whenever practical.
 
-CI should eventually test both the pinned supported Cypht release and upstream `master`. A failure against upstream `master` is an early-warning compatibility regression, not automatically a public API break.
+The gateway and bridge perform an exact product-version handshake. A mismatched bridge is rejected rather than silently running against an unknown internal contract.
+
+Runtime integration against a live provider belongs in deployment/CI environments with test mailboxes. This artifact environment does not contain live Cypht/Gmail/QQ credentials.
