@@ -1,6 +1,9 @@
 use gateway_auth::{Credential, CyphtSession};
 use gateway_core::{GatewayError, GatewayResult};
-use reqwest::{header::{HeaderMap, HeaderValue, COOKIE}, Client, StatusCode};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, CONTENT_DISPOSITION, CONTENT_TYPE, COOKIE},
+    Client, StatusCode,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::time::Duration;
 use url::Url;
@@ -20,6 +23,18 @@ pub struct BridgeAccount {
     pub protocol: String,
     pub server: Option<String>,
     pub can_send: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeProfile {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+    pub reply_to: String,
+    pub signature: String,
+    pub account_id: Option<String>,
+    #[serde(rename = "default")]
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +96,37 @@ pub struct BridgeAttachment {
 pub struct BridgeMessagePage {
     pub total: Option<u64>,
     pub messages: Vec<BridgeMessageSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeUpload {
+    pub id: String,
+    pub filename: String,
+    pub content_type: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeWriteResult {
+    pub status: String,
+    pub message_id_header: Option<String>,
+    pub account_id: Option<String>,
+    pub folder: Option<String>,
+    pub uid: Option<String>,
+    pub scheduled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeActionResult {
+    pub status: String,
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BridgeDownload {
+    pub bytes: Vec<u8>,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,6 +203,10 @@ impl CyphtClient {
         self.bridge_get(session, "ajax_gateway_accounts", &[]).await
     }
 
+    pub async fn profiles(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeProfile>> {
+        self.bridge_get(session, "ajax_gateway_profiles", &[]).await
+    }
+
     pub async fn mailboxes(&self, session: &CyphtSession, account_id: &str) -> GatewayResult<Vec<BridgeMailbox>> {
         self.bridge_get(session, "ajax_gateway_mailboxes", &[("account_id", account_id)]).await
     }
@@ -191,6 +241,59 @@ impl CyphtClient {
         ]).await
     }
 
+    pub async fn attachment(&self, session: &CyphtSession, account_id: &str, folder: &str, uid: &str, part: &str) -> GatewayResult<BridgeDownload> {
+        let mut url = self.page_url("ajax_gateway_attachment")?;
+        url.query_pairs_mut()
+            .append_pair("account_id", account_id)
+            .append_pair("folder", folder)
+            .append_pair("uid", uid)
+            .append_pair("part", part);
+        let response = self.http.get(url)
+            .headers(self.bridge_headers(session)?)
+            .send().await.map_err(upstream)?;
+        self.ensure_bridge_status(&response)?;
+        let content_type = response.headers().get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(str::to_string);
+        let filename = response.headers().get(CONTENT_DISPOSITION).and_then(|v| v.to_str().ok()).and_then(filename_from_disposition);
+        let bytes = response.bytes().await.map_err(upstream)?.to_vec();
+        Ok(BridgeDownload { bytes, filename, content_type })
+    }
+
+    pub async fn upload(&self, session: &CyphtSession, filename: &str, content_type: &str, bytes: &[u8]) -> GatewayResult<BridgeUpload> {
+        let url = self.page_url("ajax_gateway_upload")?;
+        let mut headers = self.bridge_headers(session)?;
+        headers.insert("x-cypht-gateway-filename", HeaderValue::from_str(filename)
+            .map_err(|_| GatewayError::InvalidRequest("invalid attachment filename".into()))?);
+        headers.insert("x-cypht-gateway-content-type", HeaderValue::from_str(content_type)
+            .map_err(|_| GatewayError::InvalidRequest("invalid attachment content type".into()))?);
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
+        let response = self.http.post(url).headers(headers).body(bytes.to_vec()).send().await.map_err(upstream)?;
+        self.decode_envelope(response).await
+    }
+
+    pub async fn send(&self, session: &CyphtSession, payload: &serde_json::Value) -> GatewayResult<BridgeWriteResult> {
+        self.bridge_post(session, "ajax_gateway_send", payload).await
+    }
+
+    pub async fn draft(&self, session: &CyphtSession, payload: &serde_json::Value) -> GatewayResult<BridgeWriteResult> {
+        self.bridge_post(session, "ajax_gateway_draft", payload).await
+    }
+
+    pub async fn update_message(&self, session: &CyphtSession, payload: &serde_json::Value) -> GatewayResult<BridgeActionResult> {
+        self.bridge_post(session, "ajax_gateway_message_update", payload).await
+    }
+
+    pub async fn move_message(&self, session: &CyphtSession, payload: &serde_json::Value) -> GatewayResult<BridgeActionResult> {
+        self.bridge_post(session, "ajax_gateway_message_move", payload).await
+    }
+
+    pub async fn archive_message(&self, session: &CyphtSession, payload: &serde_json::Value) -> GatewayResult<BridgeActionResult> {
+        self.bridge_post(session, "ajax_gateway_message_archive", payload).await
+    }
+
+    pub async fn delete_message(&self, session: &CyphtSession, payload: &serde_json::Value) -> GatewayResult<BridgeActionResult> {
+        self.bridge_post(session, "ajax_gateway_message_delete", payload).await
+    }
+
     async fn bridge_get<T: DeserializeOwned>(&self, session: &CyphtSession, page: &str, params: &[(&str, &str)]) -> GatewayResult<T> {
         let mut url = self.page_url(page)?;
         {
@@ -202,17 +305,37 @@ impl CyphtClient {
         let response = self.http.get(url)
             .headers(self.bridge_headers(session)?)
             .send().await.map_err(upstream)?;
+        self.decode_envelope(response).await
+    }
+
+    async fn bridge_post<T: DeserializeOwned>(&self, session: &CyphtSession, page: &str, payload: &serde_json::Value) -> GatewayResult<T> {
+        let url = self.page_url(page)?;
+        let payload = serde_json::to_string(payload).map_err(|e| GatewayError::Internal(format!("encode bridge payload: {e}")))?;
+        let response = self.http.post(url)
+            .headers(self.bridge_headers(session)?)
+            .form(&[("payload", payload)])
+            .send().await.map_err(upstream)?;
+        self.decode_envelope(response).await
+    }
+
+    async fn decode_envelope<T: DeserializeOwned>(&self, response: reqwest::Response) -> GatewayResult<T> {
+        self.ensure_bridge_status(&response)?;
+        let envelope: BridgeEnvelope<T> = response.json().await
+            .map_err(|e| GatewayError::Upstream(format!("invalid bridge JSON: {e}")))?;
+        if !envelope.ok {
+            return Err(GatewayError::Upstream(envelope.error.unwrap_or_else(|| "bridge operation failed".into())));
+        }
+        envelope.data.ok_or_else(|| GatewayError::Upstream("bridge response missing data".into()))
+    }
+
+    fn ensure_bridge_status(&self, response: &reqwest::Response) -> GatewayResult<()> {
         if response.status() == StatusCode::UNAUTHORIZED || response.status() == StatusCode::FORBIDDEN {
             return Err(GatewayError::Authentication);
         }
         if !response.status().is_success() {
             return Err(GatewayError::Upstream(format!("bridge returned HTTP {}", response.status())));
         }
-        let envelope: BridgeEnvelope<T> = response.json().await.map_err(|e| GatewayError::Upstream(format!("invalid bridge JSON: {e}")))?;
-        if !envelope.ok {
-            return Err(GatewayError::Upstream(envelope.error.unwrap_or_else(|| "bridge operation failed".into())));
-        }
-        envelope.data.ok_or_else(|| GatewayError::Upstream("bridge response missing data".into()))
+        Ok(())
     }
 
     fn bridge_headers(&self, session: &CyphtSession) -> GatewayResult<HeaderMap> {
@@ -230,6 +353,18 @@ impl CyphtClient {
         url.query_pairs_mut().append_pair("page", page);
         Ok(url)
     }
+}
+
+fn filename_from_disposition(value: &str) -> Option<String> {
+    for part in value.split(';').map(str::trim) {
+        if let Some(filename) = part.strip_prefix("filename=") {
+            let filename = filename.trim_matches('"').trim();
+            if !filename.is_empty() {
+                return Some(filename.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn upstream(error: reqwest::Error) -> GatewayError {

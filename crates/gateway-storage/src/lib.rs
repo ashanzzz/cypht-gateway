@@ -28,6 +28,14 @@ pub struct StoredPat {
     pub revoked_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredIdempotency {
+    pub request_hash: String,
+    pub response_json: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
 #[derive(Clone)]
 pub struct Store {
     conn: Arc<Mutex<Connection>>,
@@ -86,7 +94,18 @@ impl Store {
                resource TEXT,
                success INTEGER NOT NULL,
                detail TEXT
-             );"
+             );
+             CREATE TABLE IF NOT EXISTS gateway_idempotency (
+               username TEXT NOT NULL,
+               operation TEXT NOT NULL,
+               idempotency_key TEXT NOT NULL,
+               request_hash TEXT NOT NULL,
+               response_json TEXT NOT NULL,
+               created_at INTEGER NOT NULL,
+               expires_at INTEGER NOT NULL,
+               PRIMARY KEY (username, operation, idempotency_key)
+             );
+             CREATE INDEX IF NOT EXISTS idx_gateway_idempotency_expiry ON gateway_idempotency(expires_at);"
         ).map_err(storage_err)?;
         Ok(())
     }
@@ -203,6 +222,69 @@ impl Store {
         Ok(())
     }
 
+    pub fn get_idempotency(&self, username: &str, operation: &str, key: &str, now: i64) -> GatewayResult<Option<StoredIdempotency>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let row = conn.query_row(
+            "SELECT request_hash, response_json, created_at, expires_at
+             FROM gateway_idempotency
+             WHERE username=?1 AND operation=?2 AND idempotency_key=?3 AND expires_at>?4",
+            params![username, operation, key, now],
+            |row| Ok(StoredIdempotency {
+                request_hash: row.get(0)?,
+                response_json: row.get(1)?,
+                created_at: row.get(2)?,
+                expires_at: row.get(3)?,
+            }),
+        ).optional().map_err(storage_err)?;
+        Ok(row)
+    }
+
+
+    pub fn claim_idempotency(&self, username: &str, operation: &str, key: &str, value: &StoredIdempotency) -> GatewayResult<bool> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        // Expired reservations must not block a fresh atomic claim. The store
+        // mutex keeps this delete+insert sequence serialized inside this
+        // process, while SQLite's primary key prevents duplicate claims.
+        conn.execute(
+            "DELETE FROM gateway_idempotency
+             WHERE username=?1 AND operation=?2 AND idempotency_key=?3 AND expires_at<=?4",
+            params![username, operation, key, value.created_at],
+        ).map_err(storage_err)?;
+        let changed = conn.execute(
+            "INSERT OR IGNORE INTO gateway_idempotency
+             (username, operation, idempotency_key, request_hash, response_json, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![username, operation, key, value.request_hash, value.response_json, value.created_at, value.expires_at],
+        ).map_err(storage_err)?;
+        Ok(changed == 1)
+    }
+
+    pub fn complete_idempotency(&self, username: &str, operation: &str, key: &str, request_hash: &str, response_json: &str) -> GatewayResult<bool> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let changed = conn.execute(
+            "UPDATE gateway_idempotency SET response_json=?1
+             WHERE username=?2 AND operation=?3 AND idempotency_key=?4 AND request_hash=?5",
+            params![response_json, username, operation, key, request_hash],
+        ).map_err(storage_err)?;
+        Ok(changed == 1)
+    }
+
+    pub fn put_idempotency(&self, username: &str, operation: &str, key: &str, value: &StoredIdempotency) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO gateway_idempotency
+             (username, operation, idempotency_key, request_hash, response_json, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![username, operation, key, value.request_hash, value.response_json, value.created_at, value.expires_at],
+        ).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn prune_idempotency(&self, now: i64) -> GatewayResult<usize> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute("DELETE FROM gateway_idempotency WHERE expires_at<=?1", params![now]).map_err(storage_err)
+    }
+
     pub fn audit(&self, username: &str, auth_id: Option<&str>, operation: &str, resource: Option<&str>, success: bool, detail: Option<&str>, now: i64) -> GatewayResult<()> {
         let conn = self.conn.lock().map_err(lock_err)?;
         conn.execute(
@@ -287,5 +369,29 @@ mod tests {
         store.put_session("hash", &session).unwrap();
         assert!(store.get_session("hash", 199).unwrap().is_some());
         assert!(store.get_session("hash", 200).unwrap().is_none());
+    }
+
+    #[test]
+    fn idempotency_round_trip_and_expiry() {
+        let store = Store::open_memory().unwrap();
+        let value = StoredIdempotency {
+            request_hash: "abc".into(),
+            response_json: "{\"status\":\"sent\"}".into(),
+            created_at: 100,
+            expires_at: 200,
+        };
+        assert!(store.claim_idempotency("alice", "mail.send", "key-1", &value).unwrap());
+        assert!(!store.claim_idempotency("alice", "mail.send", "key-1", &value).unwrap());
+        assert_eq!(store.get_idempotency("alice", "mail.send", "key-1", 150).unwrap().unwrap().request_hash, "abc");
+        assert!(store.complete_idempotency("alice", "mail.send", "key-1", "abc", "{\"status\":\"sent\"}").unwrap());
+        assert!(store.get_idempotency("alice", "mail.send", "key-1", 200).unwrap().is_none());
+        let replacement = StoredIdempotency {
+            request_hash: "def".into(),
+            response_json: String::new(),
+            created_at: 201,
+            expires_at: 300,
+        };
+        assert!(store.claim_idempotency("alice", "mail.send", "key-1", &replacement).unwrap());
+        assert_eq!(store.get_idempotency("alice", "mail.send", "key-1", 250).unwrap().unwrap().request_hash, "def");
     }
 }

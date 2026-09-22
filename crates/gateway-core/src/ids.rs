@@ -11,6 +11,8 @@ pub enum ObjectKind {
     Mailbox,
     Message,
     Attachment,
+    Profile,
+    Upload,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

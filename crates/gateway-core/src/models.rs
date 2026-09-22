@@ -66,6 +66,17 @@ pub struct Account {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Profile {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+    pub reply_to: String,
+    pub signature: String,
+    pub account_id: Option<String>,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mailbox {
     pub id: String,
     pub account_id: String,
@@ -77,7 +88,7 @@ pub struct Mailbox {
     pub selectable: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Address {
     pub name: Option<String>,
     pub email: String,
@@ -108,7 +119,7 @@ pub struct Attachment {
     pub inline: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MessageBody {
     pub text: Option<String>,
     pub html: Option<String>,
@@ -146,4 +157,92 @@ pub struct SearchRequest {
     pub mailbox_id: Option<String>,
     pub query: String,
     pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendMessageRequest {
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub to: Vec<Address>,
+    #[serde(default)]
+    pub cc: Vec<Address>,
+    #[serde(default)]
+    pub bcc: Vec<Address>,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub body: MessageBody,
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
+    pub schedule_at: Option<String>,
+    #[serde(default)]
+    pub delivery_receipt: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplyMessageRequest {
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub reply_all: bool,
+    #[serde(default)]
+    pub body: MessageBody,
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
+    pub schedule_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForwardMessageRequest {
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub to: Vec<Address>,
+    #[serde(default)]
+    pub cc: Vec<Address>,
+    #[serde(default)]
+    pub bcc: Vec<Address>,
+    #[serde(default)]
+    pub body: MessageBody,
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
+    pub schedule_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageUpdateRequest {
+    pub seen: Option<bool>,
+    pub flagged: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoveMessageRequest {
+    pub mailbox_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Upload {
+    pub id: String,
+    pub filename: String,
+    pub content_type: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AttachmentDownload {
+    pub bytes: Vec<u8>,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailWriteResult {
+    pub status: String,
+    pub message_id_header: Option<String>,
+    pub message_id: Option<String>,
+    pub scheduled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionResult {
+    pub status: String,
+    pub mailbox_id: Option<String>,
 }
