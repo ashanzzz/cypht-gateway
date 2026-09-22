@@ -1,0 +1,291 @@
+use gateway_core::{GatewayError, GatewayResult, TokenMetadata};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use std::{path::Path, sync::{Arc, Mutex}};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredSession {
+    pub username: String,
+    pub credential_ciphertext: Vec<u8>,
+    pub cypht_session_ciphertext: Vec<u8>,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredPat {
+    pub id: String,
+    pub username: String,
+    pub name: String,
+    pub prefix: String,
+    pub scopes: Vec<String>,
+    pub account_allowlist: Vec<String>,
+    pub credential_ciphertext: Vec<u8>,
+    pub cypht_session_ciphertext: Option<Vec<u8>>,
+    pub created_at: i64,
+    pub expires_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+    pub revoked_at: Option<i64>,
+}
+
+#[derive(Clone)]
+pub struct Store {
+    conn: Arc<Mutex<Connection>>,
+}
+
+impl Store {
+    pub fn open(path: impl AsRef<Path>) -> GatewayResult<Self> {
+        let conn = Connection::open(path).map_err(storage_err)?;
+        let store = Self { conn: Arc::new(Mutex::new(conn)) };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    pub fn open_memory() -> GatewayResult<Self> {
+        let conn = Connection::open_in_memory().map_err(storage_err)?;
+        let store = Self { conn: Arc::new(Mutex::new(conn)) };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    fn migrate(&self) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(|_| GatewayError::Storage("database lock poisoned".into()))?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA foreign_keys=ON;
+             CREATE TABLE IF NOT EXISTS gateway_sessions (
+               token_hash TEXT PRIMARY KEY,
+               username TEXT NOT NULL,
+               credential_ciphertext BLOB NOT NULL,
+               cypht_session_ciphertext BLOB NOT NULL,
+               created_at INTEGER NOT NULL,
+               expires_at INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS gateway_pats (
+               id TEXT PRIMARY KEY,
+               token_hash TEXT NOT NULL UNIQUE,
+               username TEXT NOT NULL,
+               name TEXT NOT NULL,
+               prefix TEXT NOT NULL,
+               scopes_json TEXT NOT NULL,
+               account_allowlist_json TEXT NOT NULL,
+               credential_ciphertext BLOB NOT NULL,
+               cypht_session_ciphertext BLOB,
+               created_at INTEGER NOT NULL,
+               expires_at INTEGER,
+               last_used_at INTEGER,
+               revoked_at INTEGER
+             );
+             CREATE INDEX IF NOT EXISTS idx_gateway_pats_user ON gateway_pats(username);
+             CREATE TABLE IF NOT EXISTS gateway_audit (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               created_at INTEGER NOT NULL,
+               username TEXT NOT NULL,
+               auth_id TEXT,
+               operation TEXT NOT NULL,
+               resource TEXT,
+               success INTEGER NOT NULL,
+               detail TEXT
+             );"
+        ).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn put_session(&self, token_hash: &str, session: &StoredSession) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO gateway_sessions
+             (token_hash, username, credential_ciphertext, cypht_session_ciphertext, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![token_hash, session.username, session.credential_ciphertext, session.cypht_session_ciphertext, session.created_at, session.expires_at],
+        ).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn get_session(&self, token_hash: &str, now: i64) -> GatewayResult<Option<StoredSession>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let row = conn.query_row(
+            "SELECT username, credential_ciphertext, cypht_session_ciphertext, created_at, expires_at
+             FROM gateway_sessions WHERE token_hash=?1 AND expires_at>?2",
+            params![token_hash, now],
+            |row| Ok(StoredSession {
+                username: row.get(0)?,
+                credential_ciphertext: row.get(1)?,
+                cypht_session_ciphertext: row.get(2)?,
+                created_at: row.get(3)?,
+                expires_at: row.get(4)?,
+            }),
+        ).optional().map_err(storage_err)?;
+        Ok(row)
+    }
+
+    pub fn delete_session(&self, token_hash: &str) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute("DELETE FROM gateway_sessions WHERE token_hash=?1", params![token_hash]).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn put_pat(&self, token_hash: &str, pat: &StoredPat) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let scopes = serde_json::to_string(&pat.scopes).map_err(|e| GatewayError::Storage(e.to_string()))?;
+        let allowlist = serde_json::to_string(&pat.account_allowlist).map_err(|e| GatewayError::Storage(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO gateway_pats
+             (id, token_hash, username, name, prefix, scopes_json, account_allowlist_json,
+              credential_ciphertext, cypht_session_ciphertext, created_at, expires_at, last_used_at, revoked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![pat.id, token_hash, pat.username, pat.name, pat.prefix, scopes, allowlist,
+                    pat.credential_ciphertext, pat.cypht_session_ciphertext, pat.created_at,
+                    pat.expires_at, pat.last_used_at, pat.revoked_at],
+        ).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn get_pat_by_hash(&self, token_hash: &str, now: i64) -> GatewayResult<Option<StoredPat>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let row = conn.query_row(
+            "SELECT id, username, name, prefix, scopes_json, account_allowlist_json,
+                    credential_ciphertext, cypht_session_ciphertext, created_at, expires_at,
+                    last_used_at, revoked_at
+             FROM gateway_pats
+             WHERE token_hash=?1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?2)",
+            params![token_hash, now],
+            |row| decode_pat_row(row),
+        ).optional().map_err(storage_err)?;
+        Ok(row)
+    }
+
+    pub fn list_pats(&self, username: &str) -> GatewayResult<Vec<TokenMetadata>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, prefix, scopes_json, account_allowlist_json, created_at, expires_at, last_used_at, revoked_at
+             FROM gateway_pats WHERE username=?1 ORDER BY created_at DESC"
+        ).map_err(storage_err)?;
+        let rows = stmt.query_map(params![username], |row| {
+            let scopes_json: String = row.get(3)?;
+            let allowlist_json: String = row.get(4)?;
+            Ok(TokenMetadata {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                prefix: row.get(2)?,
+                scopes: serde_json::from_str(&scopes_json).unwrap_or_default(),
+                account_allowlist: serde_json::from_str(&allowlist_json).unwrap_or_default(),
+                created_at: row.get(5)?,
+                expires_at: row.get(6)?,
+                last_used_at: row.get(7)?,
+                revoked_at: row.get(8)?,
+            })
+        }).map_err(storage_err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(storage_err)
+    }
+
+    pub fn revoke_pat(&self, username: &str, id: &str, now: i64) -> GatewayResult<bool> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let changed = conn.execute(
+            "UPDATE gateway_pats SET revoked_at=?1 WHERE id=?2 AND username=?3 AND revoked_at IS NULL",
+            params![now, id, username],
+        ).map_err(storage_err)?;
+        Ok(changed > 0)
+    }
+
+    pub fn touch_pat(&self, id: &str, now: i64) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute("UPDATE gateway_pats SET last_used_at=?1 WHERE id=?2", params![now, id]).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn update_pat_cypht_session(&self, id: &str, ciphertext: &[u8]) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute(
+            "UPDATE gateway_pats SET cypht_session_ciphertext=?1 WHERE id=?2",
+            params![ciphertext, id],
+        ).map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn audit(&self, username: &str, auth_id: Option<&str>, operation: &str, resource: Option<&str>, success: bool, detail: Option<&str>, now: i64) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute(
+            "INSERT INTO gateway_audit (created_at, username, auth_id, operation, resource, success, detail)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![now, username, auth_id, operation, resource, if success {1} else {0}, detail],
+        ).map_err(storage_err)?;
+        Ok(())
+    }
+}
+
+fn decode_pat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredPat> {
+    let scopes_json: String = row.get(4)?;
+    let allowlist_json: String = row.get(5)?;
+    Ok(StoredPat {
+        id: row.get(0)?,
+        username: row.get(1)?,
+        name: row.get(2)?,
+        prefix: row.get(3)?,
+        scopes: serde_json::from_str(&scopes_json).unwrap_or_default(),
+        account_allowlist: serde_json::from_str(&allowlist_json).unwrap_or_default(),
+        credential_ciphertext: row.get(6)?,
+        cypht_session_ciphertext: row.get(7)?,
+        created_at: row.get(8)?,
+        expires_at: row.get(9)?,
+        last_used_at: row.get(10)?,
+        revoked_at: row.get(11)?,
+    })
+}
+
+fn storage_err(error: rusqlite::Error) -> GatewayError {
+    GatewayError::Storage(error.to_string())
+}
+
+fn lock_err<T>(_: std::sync::PoisonError<T>) -> GatewayError {
+    GatewayError::Storage("database lock poisoned".into())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_pat() -> StoredPat {
+        StoredPat {
+            id: "tok_test".into(),
+            username: "alice".into(),
+            name: "reader".into(),
+            prefix: "cypht_pat_test_****".into(),
+            scopes: vec!["mail.read".into()],
+            account_allowlist: vec!["account-1".into()],
+            credential_ciphertext: vec![1, 2, 3],
+            cypht_session_ciphertext: Some(vec![4, 5, 6]),
+            created_at: 100,
+            expires_at: Some(1_000),
+            last_used_at: None,
+            revoked_at: None,
+        }
+    }
+
+    #[test]
+    fn pat_lifecycle_honors_expiry_and_revocation() {
+        let store = Store::open_memory().unwrap();
+        let pat = sample_pat();
+        store.put_pat("hash", &pat).unwrap();
+        assert!(store.get_pat_by_hash("hash", 500).unwrap().is_some());
+        assert!(store.get_pat_by_hash("hash", 1_000).unwrap().is_none());
+        assert!(store.revoke_pat("alice", "tok_test", 600).unwrap());
+        assert!(store.get_pat_by_hash("hash", 700).unwrap().is_none());
+    }
+
+    #[test]
+    fn sessions_expire() {
+        let store = Store::open_memory().unwrap();
+        let session = StoredSession {
+            username: "alice".into(),
+            credential_ciphertext: vec![1],
+            cypht_session_ciphertext: vec![2],
+            created_at: 100,
+            expires_at: 200,
+        };
+        store.put_session("hash", &session).unwrap();
+        assert!(store.get_session("hash", 199).unwrap().is_some());
+        assert!(store.get_session("hash", 200).unwrap().is_none());
+    }
+}

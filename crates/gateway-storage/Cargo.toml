@@ -1,15 +1,12 @@
 [package]
-name = "gateway-core"
+name = "gateway-storage"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-build = "build.rs"
 
 [dependencies]
-base64.workspace = true
-hmac.workspace = true
+gateway-core = { path = "../gateway-core" }
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-thiserror.workspace = true

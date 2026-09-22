@@ -1,15 +1,19 @@
 [package]
-name = "gateway-core"
+name = "gateway-auth"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-build = "build.rs"
 
 [dependencies]
 base64.workspace = true
+chacha20poly1305.workspace = true
+gateway-core = { path = "../gateway-core" }
+gateway-storage = { path = "../gateway-storage" }
+hex.workspace = true
 hmac.workspace = true
+rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-thiserror.workspace = true
+zeroize.workspace = true

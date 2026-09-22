@@ -1,29 +1,14 @@
-use serde::Serialize;
+//! Stable types shared by every Cypht Gateway surface.
+//!
+//! AI-maintenance rule: protocol and provider implementation details belong in adapters.
+//! Public REST/MCP/CLI contracts should depend on the types in this crate instead.
 
-#[derive(Debug, Clone, Serialize)]
-pub struct BuildInfo {
-    pub version: &'static str,
-    pub git_sha: &'static str,
-    pub git_short_sha: &'static str,
-    pub git_tag: Option<&'static str>,
-    pub git_dirty: bool,
-    pub build_time: Option<&'static str>,
-    pub api_version: &'static str,
-}
+mod build_info;
+mod error;
+mod ids;
+mod models;
 
-impl BuildInfo {
-    pub fn current() -> Self {
-        let tag = env!("GATEWAY_GIT_TAG");
-        let build_time = env!("GATEWAY_BUILD_TIME");
-
-        Self {
-            version: env!("CARGO_PKG_VERSION"),
-            git_sha: env!("GATEWAY_GIT_SHA"),
-            git_short_sha: env!("GATEWAY_GIT_SHORT_SHA"),
-            git_tag: (!tag.is_empty()).then_some(tag),
-            git_dirty: env!("GATEWAY_GIT_DIRTY") == "true",
-            build_time: (build_time != "unknown").then_some(build_time),
-            api_version: "v1",
-        }
-    }
-}
+pub use build_info::BuildInfo;
+pub use error::{GatewayError, GatewayResult};
+pub use ids::{ObjectIdCodec, ObjectKind};
+pub use models::*;
