@@ -31,7 +31,7 @@ RUN chmod 0755 /usr/local/bin/all-in-one-entrypoint.sh \
        > /usr/local/etc/php/conf.d/cypht-gateway.ini
 
 ENV USER_CONFIG_TYPE=custom:Gateway_User_Config_File \
-    CYPHT_MODULES=core,contacts,local_contacts,feeds,imap,smtp,account,idle_timer,calendar,themes,nux,developer,history,saved_searches,advanced_search,highlights,profiles,inline_message,imap_folders,keyboard_shortcuts,tags,brute_force,api_login,gateway \
+    CYPHT_MODULES=core,contacts,local_contacts,feeds,imap,smtp,account,idle_timer,calendar,themes,nux,developer,history,saved_searches,advanced_search,highlights,profiles,inline_message,imap_folders,keyboard_shortcuts,tags,brute_force,sievefilters,api_login,gateway \
     GATEWAY_BIND=0.0.0.0:18080 \
     GATEWAY_DATA_DIR=/var/lib/hm3/app_data/gateway \
     GATEWAY_DB_PATH=/var/lib/hm3/app_data/gateway/gateway.db \
