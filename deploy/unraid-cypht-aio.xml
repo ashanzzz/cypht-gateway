@@ -10,7 +10,7 @@
   <Support>https://github.com/ashanzzz/cypht-gateway/issues</Support>
   <Project>https://github.com/ashanzzz/cypht-gateway</Project>
   <ReadMe>https://github.com/ashanzzz/cypht-gateway#readme</ReadMe>
-  <Overview>All-in-One Cypht 2.12.0 Webmail with native REST API and Model Context Protocol (MCP) AI server.</Overview>
+  <Overview>All-in-One Cypht 2.12.0 Webmail with native REST API and Model Context Protocol (MCP) AI server. Uses existing Cypht app_data directory for gateway storage.</Overview>
   <Category>Network:Web Productivity:MailTools</Category>
   <WebUI>http://[IP]:[PORT:8088]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/ashanzzz/cypht-gateway/main/deploy/unraid-cypht-aio.xml</TemplateURL>
@@ -22,11 +22,7 @@
   <Config Name="Cypht Webmail Port" Target="80" Default="8088" Mode="tcp" Description="Host port for Cypht native Webmail UI." Type="Port" Display="always" Required="true" Mask="false">8088</Config>
   <Config Name="Gateway REST API Port" Target="18080" Default="18080" Mode="tcp" Description="Host port for Cypht Gateway REST API and Management UI." Type="Port" Display="always" Required="true" Mask="false">18080</Config>
   <Config Name="MCP Server Port" Target="8790" Default="8790" Mode="tcp" Description="Host port for Streamable HTTP MCP server (/mcp)." Type="Port" Display="always" Required="true" Mask="false">8790</Config>
-  <Config Name="Gateway Data" Target="/var/lib/cypht-gateway" Default="/mnt/user/appdata/cypht/gateway" Mode="rw" Description="Persistent directory for Gateway database, tokens, audit logs, and keys." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/cypht/gateway</Config>
-  <Config Name="Cypht Users Data" Target="/var/lib/hm3/users" Default="/mnt/user/appdata/cypht/users" Mode="rw" Description="Persistent directory for Cypht user configuration files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/cypht/users</Config>
-  <Config Name="Cypht Attachments Data" Target="/var/lib/hm3/attachments" Default="/mnt/user/appdata/cypht/attachments" Mode="rw" Description="Persistent directory for temporary email attachments." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/cypht/attachments</Config>
-  <Config Name="Cypht App Data" Target="/var/lib/hm3/app_data" Default="/mnt/user/appdata/cypht/app_data" Mode="rw" Description="Persistent directory for Cypht cache and session storage." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/cypht/app_data</Config>
-  <Config Name="API Login Key" Target="API_LOGIN_KEY" Default="" Mode="" Description="Optional custom secret key for API login. If omitted, an unguessable key is auto-generated in gateway data." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="Gateway Bridge Key" Target="GATEWAY_BRIDGE_KEY" Default="" Mode="" Description="Optional custom secret key for Bridge. If omitted, an unguessable key is auto-generated in gateway data." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="Gateway Master Key" Target="GATEWAY_MASTER_KEY" Default="" Mode="" Description="Optional custom master key for token encryption. If omitted, auto-generated in gateway data." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Cypht Users Data" Target="/var/lib/hm3/users" Default="/mnt/cache/appdata/cypht/users" Mode="rw" Description="Persistent directory for Cypht user configuration files." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/cypht/users</Config>
+  <Config Name="Cypht Attachments Data" Target="/var/lib/hm3/attachments" Default="/mnt/cache/appdata/cypht/attachments" Mode="rw" Description="Persistent directory for temporary email attachments." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/cypht/attachments</Config>
+  <Config Name="Cypht App Data" Target="/var/lib/hm3/app_data" Default="/mnt/cache/appdata/cypht/app_data" Mode="rw" Description="Persistent directory for Cypht app data and Gateway database (/var/lib/hm3/app_data/gateway)." Type="Path" Display="always" Required="true" Mask="false">/mnt/cache/appdata/cypht/app_data</Config>
 </Container>

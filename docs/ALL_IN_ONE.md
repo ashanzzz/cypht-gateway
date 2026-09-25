@@ -30,7 +30,7 @@ The All-in-One distribution packages the complete Cypht 2.12.0 Webmail runtime a
 
 ### Key Highlights
 - **Single Container Simplicity**: Unraid runs only one container. No complex Docker networks or multi-container wiring.
-- **Zero-Config Secrets**: Generates cryptographically secure keys (`GATEWAY_MASTER_KEY`, `API_LOGIN_KEY`, `GATEWAY_BRIDGE_KEY`) on first boot and saves them to `/var/lib/cypht-gateway/`.
+- **Zero-Config Secrets**: Generates cryptographically secure keys (`GATEWAY_MASTER_KEY`, `API_LOGIN_KEY`, `GATEWAY_BRIDGE_KEY`) on first boot and saves them to `/var/lib/hm3/app_data/gateway/`.
 - **No Path Mounts Required**: All PHP bridge modules and ini configs are baked into the image.
 - **Full Capabilities**: Exposes 42 REST endpoints, Model Context Protocol (MCP) streamable HTTP server, and native Webmail simultaneously.
 
@@ -55,7 +55,6 @@ docker run -d \
   -p 8088:80 \
   -p 18080:18080 \
   -p 8790:8790 \
-  -v /mnt/user/appdata/cypht/gateway:/var/lib/cypht-gateway \
   -v /mnt/user/appdata/cypht/users:/var/lib/hm3/users \
   -v /mnt/user/appdata/cypht/attachments:/var/lib/hm3/attachments \
   -v /mnt/user/appdata/cypht/app_data:/var/lib/hm3/app_data \
