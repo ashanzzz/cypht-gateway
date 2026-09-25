@@ -20,66 +20,207 @@ capabilities:
     api: "GET /api/v1/me"
     cli: "cyphtctl me"
     risk: read
+  audit.list:
+    scope: audit.read
+    api: "GET /api/v1/audit"
+    cli: "cyphtctl audit"
+    mcp: audit_list
+    risk: read
   account.list:
     scope: accounts.read
     api: "GET /api/v1/accounts"
     cli: "cyphtctl accounts"
-    planned_mcp: mail_list_accounts
+    mcp: mail_list_accounts
     risk: read
+  contact.list:
+    scope: contacts.read
+    api: "GET /api/v1/contacts"
+    cli: "cyphtctl contacts"
+    mcp: contacts_list
+    risk: read
+  contact.search:
+    scope: contacts.read
+    api: "GET /api/v1/contacts"
+    cli: "cyphtctl contacts --query"
+    mcp: contacts_search
+    risk: read
+  contact.read:
+    scope: contacts.read
+    api: "GET /api/v1/contacts/{id}"
+    cli: "cyphtctl contact-read"
+    mcp: contacts_read
+    risk: read
+  contact.create:
+    scope: contacts.write
+    api: "POST /api/v1/contacts"
+    cli: "cyphtctl contact-create"
+    mcp: contacts_create
+    risk: write
+  contact.update:
+    scope: contacts.write
+    api: "PATCH /api/v1/contacts/{id}"
+    cli: "cyphtctl contact-update"
+    mcp: contacts_update
+    risk: write
+  contact.delete:
+    scope: contacts.write
+    api: "DELETE /api/v1/contacts/{id}"
+    cli: "cyphtctl contact-delete --yes"
+    mcp: contacts_delete
+    risk: destructive
+  sieve.status:
+    scope: sieve.read
+    api: "GET /api/v1/sieve/status"
+    cli: "cyphtctl sieve-status"
+    mcp: sieve_status
+    risk: read
+  calendar.list:
+    scope: calendar.read
+    api: "GET /api/v1/calendars"
+    cli: "cyphtctl calendars"
+    mcp: calendar_list
+    risk: read
+  calendar.events.list:
+    scope: calendar.read
+    api: "GET /api/v1/calendars/{calendar_id}/events"
+    cli: "cyphtctl calendar-events"
+    mcp: calendar_events_list
+    risk: read
+  calendar.event.create:
+    scope: calendar.write
+    api: "POST /api/v1/calendars/{calendar_id}/events"
+    cli: "cyphtctl calendar-create"
+    mcp: calendar_event_create
+    risk: write
+  calendar.event.delete:
+    scope: calendar.write
+    api: "DELETE /api/v1/calendars/{calendar_id}/events/{event_id}"
+    cli: "cyphtctl calendar-delete --yes"
+    mcp: calendar_event_delete
+    risk: destructive
+  saved_search.list:
+    scope: searches.read
+    api: "GET /api/v1/saved-searches"
+    cli: "cyphtctl saved-searches"
+    mcp: saved_searches_list
+    risk: read
+  saved_search.read:
+    scope: searches.read
+    api: "GET /api/v1/saved-searches/{id}"
+    cli: "cyphtctl saved-search-read"
+    mcp: saved_searches_read
+    risk: read
+  saved_search.create:
+    scope: searches.write
+    api: "POST /api/v1/saved-searches"
+    cli: "cyphtctl saved-search-create"
+    mcp: saved_searches_create
+    risk: write
+  saved_search.update:
+    scope: searches.write
+    api: "PATCH /api/v1/saved-searches/{id}"
+    cli: "cyphtctl saved-search-update"
+    mcp: saved_searches_update
+    risk: write
+  saved_search.delete:
+    scope: searches.write
+    api: "DELETE /api/v1/saved-searches/{id}"
+    cli: "cyphtctl saved-search-delete --yes"
+    mcp: saved_searches_delete
+    risk: destructive
+  tag.list:
+    scope: tags.read
+    api: "GET /api/v1/tags"
+    cli: "cyphtctl tags list"
+    mcp: tags_list
+    risk: read
+  tag.create:
+    scope: tags.write
+    api: "POST /api/v1/tags"
+    cli: "cyphtctl tags create"
+    mcp: tags_create
+    risk: write
+  tag.update:
+    scope: tags.write
+    api: "PATCH /api/v1/tags/{id}"
+    cli: "cyphtctl tags update"
+    mcp: tags_update
+    risk: write
+  tag.delete:
+    scope: tags.write
+    api: "DELETE /api/v1/tags/{id}"
+    cli: "cyphtctl tags delete --yes"
+    mcp: tags_delete
+    risk: destructive
+  mail.tag.add:
+    scope: tags.write
+    additional_scopes: [mail.read]
+    api: "POST /api/v1/messages/{id}/tags/{tag_id}"
+    cli: "cyphtctl tag add"
+    mcp: mail_add_tag
+    risk: write
+  mail.tag.remove:
+    scope: tags.write
+    additional_scopes: [mail.read]
+    api: "DELETE /api/v1/messages/{id}/tags/{tag_id}"
+    cli: "cyphtctl tag remove --yes"
+    mcp: mail_remove_tag
+    risk: destructive
+
   profile.list:
     scope: mail.send
     api: "GET /api/v1/profiles"
     cli: "cyphtctl profiles"
-    planned_mcp: mail_list_profiles
+    mcp: mail_list_profiles
     risk: read
   mailbox.list:
     scope: accounts.read
     api: "GET /api/v1/accounts/{id}/mailboxes"
     cli: "cyphtctl mailboxes"
-    planned_mcp: mail_list_mailboxes
+    mcp: mail_list_mailboxes
     risk: read
   mail.list:
     scope: mail.read
     api: "GET /api/v1/messages"
     cli: "cyphtctl inbox"
-    planned_mcp: mail_list
+    mcp: mail_list
     risk: read
   mail.search:
     scope: mail.search
     api: "POST /api/v1/messages/search"
     cli: "cyphtctl search"
-    planned_mcp: mail_search
+    mcp: mail_search
     risk: read
   mail.read:
     scope: mail.read
     api: "GET /api/v1/messages/{id}"
     cli: "cyphtctl read"
-    planned_mcp: mail_read
+    mcp: mail_read
     risk: read
   attachment.read:
     scope: attachments.read
     api: "GET /api/v1/attachments/{id}"
     cli: "cyphtctl attachment"
-    planned_mcp: mail_get_attachment
+    mcp: mail_get_attachment
     risk: read
   attachment.upload:
     scope: mail.send
     api: "POST /api/v1/uploads"
     cli: "cyphtctl upload"
-    planned_mcp: mail_upload_attachment
+    mcp: mail_upload_attachment
     risk: write
   mail.send:
     scope: mail.send
     api: "POST /api/v1/messages/send"
     cli: "cyphtctl send"
-    planned_mcp: mail_send
+    mcp: mail_send
     risk: external_write
     idempotency_required: true
   mail.draft:
     scope: mail.send
     api: "POST /api/v1/drafts"
     cli: "cyphtctl draft"
-    planned_mcp: mail_create_draft
+    mcp: mail_create_draft
     risk: write
     idempotency_required: true
   mail.reply:
@@ -87,7 +228,7 @@ capabilities:
     additional_scopes: [mail.read]
     api: "POST /api/v1/messages/{id}/reply"
     cli: "cyphtctl reply"
-    planned_mcp: mail_reply
+    mcp: mail_reply
     risk: external_write
     idempotency_required: true
   mail.forward:
@@ -95,30 +236,30 @@ capabilities:
     additional_scopes: [mail.read]
     api: "POST /api/v1/messages/{id}/forward"
     cli: "cyphtctl forward"
-    planned_mcp: mail_forward
+    mcp: mail_forward
     risk: external_write
     idempotency_required: true
   mail.modify:
     scope: mail.modify
     api: "PATCH /api/v1/messages/{id}"
     cli: "cyphtctl mark-read|mark-unread|flag|unflag"
-    planned_mcp: mail_update
+    mcp: mail_update
     risk: write
   mail.move:
     scope: mail.modify
     api: "POST /api/v1/messages/{id}/move"
     cli: "cyphtctl move"
-    planned_mcp: mail_move
+    mcp: mail_move
     risk: write
   mail.archive:
     scope: mail.modify
     api: "POST /api/v1/messages/{id}/archive"
     cli: "cyphtctl archive"
-    planned_mcp: mail_archive
+    mcp: mail_archive
     risk: write
   mail.delete:
     scope: mail.delete
     api: "DELETE /api/v1/messages/{id}"
     cli: "cyphtctl delete --yes"
-    planned_mcp: mail_delete
+    mcp: mail_delete
     risk: destructive

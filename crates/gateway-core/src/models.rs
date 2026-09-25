@@ -219,6 +219,215 @@ pub struct MoveMessageRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Contact {
+    pub id: String,
+    pub source: String,
+    pub name: String,
+    pub email: String,
+    pub phone: Option<String>,
+    pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContactCreateRequest {
+    pub name: String,
+    pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContactUpdateRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tag {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub parent_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TagCreateRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TagUpdateRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedSearchType {
+    Simple,
+    Advanced,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvancedSearchTerm {
+    pub term: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvancedSearchTarget {
+    pub target: String,
+    pub orig: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvancedSearchSource {
+    pub account_id: String,
+    pub mailbox_id: Option<String>,
+    #[serde(default)]
+    pub all_folders: bool,
+    #[serde(default)]
+    pub subfolders: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvancedSearchTimeRange {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvancedSearchOther {
+    pub limit: u32,
+    #[serde(default)]
+    pub flags: Vec<String>,
+    pub charset: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvancedSavedSearchData {
+    pub terms: Vec<AdvancedSearchTerm>,
+    pub targets: Vec<AdvancedSearchTarget>,
+    pub sources: Vec<AdvancedSearchSource>,
+    pub times: Vec<AdvancedSearchTimeRange>,
+    pub other: AdvancedSearchOther,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedSearch {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: SavedSearchType,
+    pub query: Option<String>,
+    pub since: Option<String>,
+    pub field: Option<String>,
+    pub advanced: Option<AdvancedSavedSearchData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SavedSearchCreateRequest {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: SavedSearchType,
+    pub query: Option<String>,
+    pub since: Option<String>,
+    pub field: Option<String>,
+    pub advanced: Option<AdvancedSavedSearchData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SavedSearchUpdateRequest {
+    pub name: Option<String>,
+    pub query: Option<String>,
+    pub since: Option<String>,
+    pub field: Option<String>,
+    pub advanced: Option<AdvancedSavedSearchData>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CalendarRepeatInterval {
+    #[default]
+    None,
+    Day,
+    Week,
+    Month,
+    Year,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SieveStatus {
+    pub account_id: String,
+    pub name: String,
+    pub protocol: String,
+    pub enabled: bool,
+    pub configured: bool,
+    pub status: String,
+    pub remote_probe: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Calendar {
+    pub id: String,
+    pub name: String,
+    pub scope: String,
+    pub provider: String,
+    pub timezone: Option<String>,
+    pub capabilities: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarEvent {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub starts_at: String,
+    pub occurrence_at: String,
+    pub repeat_interval: CalendarRepeatInterval,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalendarEventCreateRequest {
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    pub starts_at: String,
+    #[serde(default)]
+    pub repeat_interval: CalendarRepeatInterval,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedSubscription {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Upload {
     pub id: String,
     pub filename: String,
@@ -245,4 +454,24 @@ pub struct MailWriteResult {
 pub struct ActionResult {
     pub status: String,
     pub mailbox_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_sync: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub id: i64,
+    pub created_at: i64,
+    pub username: String,
+    pub auth_id: Option<String>,
+    pub operation: String,
+    pub resource: Option<String>,
+    pub success: bool,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditPage {
+    pub entries: Vec<AuditEntry>,
+    pub next_offset: Option<u64>,
 }

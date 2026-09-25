@@ -6,10 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+chrono.workspace = true
 gateway-auth = { path = "../gateway-auth" }
 gateway-core = { path = "../gateway-core" }
 gateway-cypht = { path = "../gateway-cypht" }
 gateway-storage = { path = "../gateway-storage" }
+hex.workspace = true
+rand.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 sha2.workspace = true

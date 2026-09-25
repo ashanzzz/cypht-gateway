@@ -1,5 +1,8 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use chacha20poly1305::{aead::{Aead, KeyInit}, XChaCha20Poly1305, XNonce};
+use chacha20poly1305::{
+    aead::{Aead, KeyInit},
+    XChaCha20Poly1305, XNonce,
+};
 use gateway_core::{CreatedToken, GatewayError, GatewayResult};
 use gateway_storage::{Store, StoredPat, StoredSession};
 use hmac::{Hmac, Mac};
@@ -17,12 +20,25 @@ pub const SCOPE_MAIL_SEND: &str = "mail.send";
 pub const SCOPE_MAIL_MODIFY: &str = "mail.modify";
 pub const SCOPE_MAIL_DELETE: &str = "mail.delete";
 pub const SCOPE_TOKENS_MANAGE: &str = "tokens.manage";
+pub const SCOPE_AUDIT_READ: &str = "audit.read";
+pub const SCOPE_CONTACTS_READ: &str = "contacts.read";
+pub const SCOPE_CONTACTS_WRITE: &str = "contacts.write";
+pub const SCOPE_TAGS_READ: &str = "tags.read";
+pub const SCOPE_TAGS_WRITE: &str = "tags.write";
+pub const SCOPE_SEARCHES_READ: &str = "searches.read";
+pub const SCOPE_SEARCHES_WRITE: &str = "searches.write";
+pub const SCOPE_CALENDAR_READ: &str = "calendar.read";
+pub const SCOPE_CALENDAR_WRITE: &str = "calendar.write";
+pub const SCOPE_FEEDS_READ: &str = "feeds.read";
+pub const SCOPE_FEEDS_WRITE: &str = "feeds.write";
+pub const SCOPE_SIEVE_READ: &str = "sieve.read";
 
 pub const DEFAULT_AI_SCOPES: &[&str] = &[
     SCOPE_ACCOUNTS_READ,
     SCOPE_MAIL_READ,
     SCOPE_MAIL_SEARCH,
     SCOPE_ATTACHMENTS_READ,
+    SCOPE_CONTACTS_READ,
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -64,7 +80,8 @@ impl Principal {
     }
 
     pub fn account_allowed(&self, account_id: &str) -> bool {
-        self.account_allowlist.is_empty() || self.account_allowlist.iter().any(|id| id == account_id)
+        self.account_allowlist.is_empty()
+            || self.account_allowlist.iter().any(|id| id == account_id)
     }
 }
 
@@ -77,9 +94,9 @@ pub struct Vault {
 
 impl Vault {
     pub fn from_base64(value: &str) -> GatewayResult<Self> {
-        let bytes = STANDARD.decode(value).map_err(|_| GatewayError::Configuration(
-            "GATEWAY_MASTER_KEY must be base64-encoded".into()
-        ))?;
+        let bytes = STANDARD.decode(value).map_err(|_| {
+            GatewayError::Configuration("GATEWAY_MASTER_KEY must be base64-encoded".into())
+        })?;
         if bytes.len() != 32 {
             return Err(GatewayError::Configuration(
                 "GATEWAY_MASTER_KEY must decode to exactly 32 bytes".into(),
@@ -93,14 +110,21 @@ impl Vault {
         master_key.zeroize();
         let cipher = XChaCha20Poly1305::new((&encryption_key).into());
         encryption_key.zeroize();
-        Ok(Self { cipher, token_hash_key, id_key })
+        Ok(Self {
+            cipher,
+            token_hash_key,
+            id_key,
+        })
     }
 
     pub fn seal_json<T: Serialize>(&self, value: &T) -> GatewayResult<Vec<u8>> {
-        let plaintext = serde_json::to_vec(value).map_err(|e| GatewayError::Internal(e.to_string()))?;
+        let plaintext =
+            serde_json::to_vec(value).map_err(|e| GatewayError::Internal(e.to_string()))?;
         let mut nonce = [0_u8; 24];
         OsRng.fill_bytes(&mut nonce);
-        let ciphertext = self.cipher.encrypt(XNonce::from_slice(&nonce), plaintext.as_ref())
+        let ciphertext = self
+            .cipher
+            .encrypt(XNonce::from_slice(&nonce), plaintext.as_ref())
             .map_err(|_| GatewayError::Crypto)?;
         let mut output = nonce.to_vec();
         output.extend_from_slice(&ciphertext);
@@ -112,13 +136,16 @@ impl Vault {
             return Err(GatewayError::Crypto);
         }
         let (nonce, ciphertext) = value.split_at(24);
-        let plaintext = self.cipher.decrypt(XNonce::from_slice(nonce), ciphertext)
+        let plaintext = self
+            .cipher
+            .decrypt(XNonce::from_slice(nonce), ciphertext)
             .map_err(|_| GatewayError::Crypto)?;
         serde_json::from_slice(&plaintext).map_err(|_| GatewayError::Crypto)
     }
 
     pub fn token_hash(&self, token: &str) -> GatewayResult<String> {
-        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&self.token_hash_key).map_err(|_| GatewayError::Crypto)?;
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&self.token_hash_key)
+            .map_err(|_| GatewayError::Crypto)?;
         mac.update(token.as_bytes());
         Ok(hex::encode(mac.finalize().into_bytes()))
     }
@@ -137,12 +164,22 @@ pub struct AuthService {
 
 impl AuthService {
     pub fn new(store: Store, vault: Vault, session_ttl_seconds: u64) -> Self {
-        Self { store, vault, session_ttl_seconds }
+        Self {
+            store,
+            vault,
+            session_ttl_seconds,
+        }
     }
 
-    pub fn vault(&self) -> &Vault { &self.vault }
+    pub fn vault(&self) -> &Vault {
+        &self.vault
+    }
 
-    pub fn issue_session(&self, credential: &Credential, cypht_session: &CyphtSession) -> GatewayResult<(String, u64)> {
+    pub fn issue_session(
+        &self,
+        credential: &Credential,
+        cypht_session: &CyphtSession,
+    ) -> GatewayResult<(String, u64)> {
         let token = format!("cypht_at_{}", random_hex(32));
         let hash = self.vault.token_hash(&token)?;
         let now = now_unix();
@@ -197,7 +234,14 @@ impl AuthService {
         self.store.delete_session(&hash)
     }
 
-    pub fn create_pat(&self, principal: &Principal, name: &str, scopes: Vec<String>, account_allowlist: Vec<String>, expires_in_days: Option<u32>) -> GatewayResult<CreatedToken> {
+    pub fn create_pat(
+        &self,
+        principal: &Principal,
+        name: &str,
+        scopes: Vec<String>,
+        account_allowlist: Vec<String>,
+        expires_in_days: Option<u32>,
+    ) -> GatewayResult<CreatedToken> {
         if matches!(&principal.auth_kind, AuthKind::Pat) {
             principal.requires(SCOPE_TOKENS_MANAGE)?;
             for scope in &scopes {
@@ -214,7 +258,11 @@ impl AuthService {
                     ));
                 }
                 for account_id in &account_allowlist {
-                    if !principal.account_allowlist.iter().any(|owned| owned == account_id) {
+                    if !principal
+                        .account_allowlist
+                        .iter()
+                        .any(|owned| owned == account_id)
+                    {
                         return Err(GatewayError::PermissionDenied(
                             "token cannot delegate an account it cannot access".into(),
                         ));
@@ -236,7 +284,9 @@ impl AuthService {
             }
         }
         if name.trim().is_empty() || name.len() > 100 {
-            return Err(GatewayError::InvalidRequest("token name must contain 1-100 characters".into()));
+            return Err(GatewayError::InvalidRequest(
+                "token name must contain 1-100 characters".into(),
+            ));
         }
         let public_id = random_hex(8);
         let secret = random_hex(32);
@@ -272,7 +322,10 @@ impl AuthService {
         })
     }
 
-    pub fn list_pats(&self, principal: &Principal) -> GatewayResult<Vec<gateway_core::TokenMetadata>> {
+    pub fn list_pats(
+        &self,
+        principal: &Principal,
+    ) -> GatewayResult<Vec<gateway_core::TokenMetadata>> {
         if matches!(&principal.auth_kind, AuthKind::Pat) {
             principal.requires(SCOPE_TOKENS_MANAGE)?;
         }
@@ -286,6 +339,14 @@ impl AuthService {
         self.store.revoke_pat(&principal.username, id, now_unix())
     }
 
+    pub fn seal_object_id_parts(&self, parts: &[String]) -> GatewayResult<Vec<u8>> {
+        self.vault.seal_json(&parts)
+    }
+
+    pub fn open_object_id_parts(&self, ciphertext: &[u8]) -> GatewayResult<Vec<String>> {
+        self.vault.open_json(ciphertext)
+    }
+
     pub fn refresh_pat_session(&self, pat_id: &str, session: &CyphtSession) -> GatewayResult<()> {
         let ciphertext = self.vault.seal_json(session)?;
         self.store.update_pat_cypht_session(pat_id, &ciphertext)
@@ -293,11 +354,15 @@ impl AuthService {
 }
 
 pub fn now_unix() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 fn derive_key(master_key: &[u8; 32], label: &[u8]) -> GatewayResult<[u8; 32]> {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(master_key).map_err(|_| GatewayError::Crypto)?;
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(master_key).map_err(|_| GatewayError::Crypto)?;
     mac.update(label);
     let bytes = mac.finalize().into_bytes();
     let mut output = [0_u8; 32];
@@ -321,18 +386,33 @@ fn validate_scopes(scopes: &[String]) -> GatewayResult<()> {
         SCOPE_MAIL_MODIFY,
         SCOPE_MAIL_DELETE,
         SCOPE_TOKENS_MANAGE,
+        SCOPE_AUDIT_READ,
+        SCOPE_CONTACTS_READ,
+        SCOPE_CONTACTS_WRITE,
+        SCOPE_TAGS_READ,
+        SCOPE_TAGS_WRITE,
+        SCOPE_SEARCHES_READ,
+        SCOPE_SEARCHES_WRITE,
+        SCOPE_CALENDAR_READ,
+        SCOPE_CALENDAR_WRITE,
+        SCOPE_FEEDS_READ,
+        SCOPE_FEEDS_WRITE,
+        SCOPE_SIEVE_READ,
     ];
     for (index, scope) in scopes.iter().enumerate() {
         if !ALLOWED.contains(&scope.as_str()) {
-            return Err(GatewayError::InvalidRequest(format!("unknown scope: {scope}")));
+            return Err(GatewayError::InvalidRequest(format!(
+                "unknown scope: {scope}"
+            )));
         }
         if scopes[..index].iter().any(|existing| existing == scope) {
-            return Err(GatewayError::InvalidRequest(format!("duplicate scope: {scope}")));
+            return Err(GatewayError::InvalidRequest(format!(
+                "duplicate scope: {scope}"
+            )));
         }
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -349,15 +429,24 @@ mod tests {
             auth_id: None,
             scopes: vec!["*".into()],
             account_allowlist: Vec::new(),
-            credential: Credential { username: "alice".into(), password: "secret".into() },
-            cypht_session: CyphtSession { hm_id: "id".into(), hm_session: "session".into() },
+            credential: Credential {
+                username: "alice".into(),
+                password: "secret".into(),
+            },
+            cypht_session: CyphtSession {
+                hm_id: "id".into(),
+                hm_session: "session".into(),
+            },
         }
     }
 
     #[test]
     fn vault_round_trips_credentials() {
         let vault = test_vault();
-        let credential = Credential { username: "alice".into(), password: "secret".into() };
+        let credential = Credential {
+            username: "alice".into(),
+            password: "secret".into(),
+        };
         let sealed = vault.seal_json(&credential).unwrap();
         let opened: Credential = vault.open_json(&sealed).unwrap();
         assert_eq!(opened.username, "alice");
@@ -365,20 +454,75 @@ mod tests {
     }
 
     #[test]
+    fn new_scopes_are_validated_and_ai_defaults_are_read_only() {
+        let scopes = [
+            SCOPE_CONTACTS_READ,
+            SCOPE_CONTACTS_WRITE,
+            SCOPE_TAGS_READ,
+            SCOPE_TAGS_WRITE,
+            SCOPE_SEARCHES_READ,
+            SCOPE_SEARCHES_WRITE,
+            SCOPE_CALENDAR_READ,
+            SCOPE_CALENDAR_WRITE,
+            SCOPE_FEEDS_READ,
+            SCOPE_FEEDS_WRITE,
+            SCOPE_SIEVE_READ,
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+        validate_scopes(&scopes).unwrap();
+
+        assert!(!DEFAULT_AI_SCOPES.contains(&SCOPE_SEARCHES_READ));
+        assert!(!DEFAULT_AI_SCOPES.contains(&SCOPE_SEARCHES_WRITE));
+        let write_scopes = [
+            SCOPE_CONTACTS_WRITE,
+            SCOPE_TAGS_WRITE,
+            SCOPE_SEARCHES_WRITE,
+            SCOPE_CALENDAR_WRITE,
+            SCOPE_FEEDS_WRITE,
+        ];
+        assert!(DEFAULT_AI_SCOPES
+            .iter()
+            .all(|scope| !write_scopes.contains(scope)));
+
+        let reader = Principal {
+            auth_kind: AuthKind::Pat,
+            scopes: DEFAULT_AI_SCOPES
+                .iter()
+                .map(|scope| (*scope).into())
+                .collect(),
+            ..session_principal()
+        };
+        assert!(matches!(
+            reader.requires(SCOPE_CONTACTS_WRITE),
+            Err(GatewayError::PermissionDenied(_))
+        ));
+    }
+
+    #[test]
     fn read_only_pat_cannot_manage_tokens() {
         let store = Store::open_memory().unwrap();
         let auth = AuthService::new(store, test_vault(), 3600);
         let owner = session_principal();
-        let created = auth.create_pat(
-            &owner,
-            "reader",
-            vec![SCOPE_MAIL_READ.into()],
-            Vec::new(),
-            None,
-        ).unwrap();
+        let created = auth
+            .create_pat(
+                &owner,
+                "reader",
+                vec![SCOPE_MAIL_READ.into()],
+                Vec::new(),
+                None,
+            )
+            .unwrap();
         let pat = auth.authenticate(&created.token).unwrap();
-        assert!(matches!(auth.list_pats(&pat), Err(GatewayError::PermissionDenied(_))));
-        assert!(matches!(auth.revoke_pat(&pat, &created.id), Err(GatewayError::PermissionDenied(_))));
+        assert!(matches!(
+            auth.list_pats(&pat),
+            Err(GatewayError::PermissionDenied(_))
+        ));
+        assert!(matches!(
+            auth.revoke_pat(&pat, &created.id),
+            Err(GatewayError::PermissionDenied(_))
+        ));
     }
 
     #[test]
@@ -386,20 +530,34 @@ mod tests {
         let store = Store::open_memory().unwrap();
         let auth = AuthService::new(store, test_vault(), 3600);
         let owner = session_principal();
-        let created = auth.create_pat(
-            &owner,
-            "limited-manager",
-            vec![SCOPE_TOKENS_MANAGE.into(), SCOPE_MAIL_READ.into()],
-            vec!["account-a".into()],
-            None,
-        ).unwrap();
+        let created = auth
+            .create_pat(
+                &owner,
+                "limited-manager",
+                vec![SCOPE_TOKENS_MANAGE.into(), SCOPE_MAIL_READ.into()],
+                vec!["account-a".into()],
+                None,
+            )
+            .unwrap();
         let pat = auth.authenticate(&created.token).unwrap();
         assert!(matches!(
-            auth.create_pat(&pat, "escalated", vec![SCOPE_MAIL_SEND.into()], vec!["account-a".into()], None),
+            auth.create_pat(
+                &pat,
+                "escalated",
+                vec![SCOPE_MAIL_SEND.into()],
+                vec!["account-a".into()],
+                None
+            ),
             Err(GatewayError::PermissionDenied(_))
         ));
         assert!(matches!(
-            auth.create_pat(&pat, "broader", vec![SCOPE_MAIL_READ.into()], Vec::new(), None),
+            auth.create_pat(
+                &pat,
+                "broader",
+                vec![SCOPE_MAIL_READ.into()],
+                Vec::new(),
+                None
+            ),
             Err(GatewayError::PermissionDenied(_))
         ));
     }
@@ -409,13 +567,15 @@ mod tests {
         let store = Store::open_memory().unwrap();
         let auth = AuthService::new(store, test_vault(), 3600);
         let owner = session_principal();
-        let created = auth.create_pat(
-            &owner,
-            "manager",
-            vec![SCOPE_TOKENS_MANAGE.into()],
-            Vec::new(),
-            None,
-        ).unwrap();
+        let created = auth
+            .create_pat(
+                &owner,
+                "manager",
+                vec![SCOPE_TOKENS_MANAGE.into()],
+                Vec::new(),
+                None,
+            )
+            .unwrap();
         let pat = auth.authenticate(&created.token).unwrap();
         assert!(!auth.list_pats(&pat).unwrap().is_empty());
     }

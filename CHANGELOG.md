@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
+## Unreleased (v0.5 work in progress)
+
+- Added read-only RSS/Atom feed subscriptions metadata through the Bridge, REST, CLI, MCP, and management UI. Article fetching and feed mutations remain deferred for SSRF and network egress protection.
+- Added redacted per-account Sieve status across the Bridge, REST, CLI, MCP, and UI. Sieve scripts, filters, credentials, remote probing, and writes remain deferred.
+- Added the limited Cypht 2.12.0 Calendar capability for user-level list, create, range, and delete across Bridge, REST, CLI, MCP, and UI. Event update and unsupported calendar fields remain deferred.
+- Added Saved Searches metadata CRUD through the Bridge, REST, CLI, MCP, and management UI. Stable opaque IDs survive Gateway renames, account-restricted PATs are denied, and advanced sources use opaque account/mailbox IDs. Live Unraid verification remains pending.
+
+- Reserved object-ID kinds and read/write scopes for contacts, tags, saved searches, calendars, and feeds.
+- Added owner-, kind-, and source-bound v2 resource IDs for accounts, mailboxes, messages, and attachments. Encrypted lookup mappings support stable resolution, while the signed v1 decoder remains for migration.
+- Added a read scope for Sieve status. The default AI token preset contains no new write scope and grants no unimplemented read capability.
+- Hid MCP write tools from `tools/list` when write mode is off. Direct calls also fail until runtime opt-in and a scoped PAT are present.
+- Added CI builds for the Gateway and pinned Cypht Bridge container images. Release tags publish versioned Gateway multi-platform and pinned Bridge AMD64 images to GHCR.
+- Updated the Cypht 2.12.0 Bridge image defaults to retain all source modules and enable api_login and gateway.
+- Fixed the Cypht 2.12.0 image to load `API_LOGIN_KEY` through a runtime config file; the key is no longer silently ignored by the stock `config/app.php`.
+- Extended version updates to keep `VERSION`, Cargo, and the Bridge version file in sync. Added a release checklist for annotated SemVer tags.
+- Added an optional edge proxy for Gateway UI `/`, REST `/api/v1`, and MCP `/mcp` on one host port. The Unraid cutover remains unverified.
+- Mapped an explicit bridge HTTP 501 response to `capability_unavailable` instead of an upstream failure.
+- Added local Contacts CRUD and search through the private Cypht bridge, REST, CLI, MCP, and management UI. Live deployment is not yet verified.
+- Added Tags CRUD and message association across local Bridge, domain, REST, CLI, MCP, and UI. Tag removal is scoped to account and folder to avoid Cypht 2.12.0 UID collisions. Live deployment remains unverified.
+- Normalized boolean and array Cypht message-action results. Gateway MOVE/archive synchronize Tags only with a verified destination UID and report `tag_sync: pending` otherwise.
+- Fixed the Cypht request-header allowlist, saved the session before Bridge responses, and bounded attachment downloads to 25 MiB.
+- Fixed Rust compilation errors in the domain, core exports, and MCP adapter.
+- Added management UI guidance for an empty Cypht account list or missing sending profile.
+- Bound Compose REST to loopback by default and added a configurable candidate host port (`GATEWAY_HOST_PORT=18080`). The port is not yet verified on Unraid.
+- Added a custom Cypht file-settings adapter with per-user locks, revision checks, atomic writes, and fresh-load readback for Contacts and Tags. The stock and database-backed settings paths still fail closed.
+- Passed local Cypht 2.12.0 file-settings persistence and stale-writer tests. Real Unraid Bridge writes remain unverified.
+- Aligned the private version handshake and Docker image with the reviewed Cypht 2.12.0 Unraid runtime. Documented older-upstream risks and pinned source tests.
+- Stopped the 2.12.0 Bridge from treating array-valued IMAP APPEND results as verified draft UIDs; SMTP success remains distinct from Sent-copy uncertainty.
+
+## [0.4.0] - 2026-09-22
+
+### Added
+
+- `cypht-mcp` binary with stdio and MCP Streamable HTTP transports.
+- AI-safe mail tools covering accounts, profiles, mailboxes, list/search/read, attachment metadata/download/upload, draft/send/reply/forward, message mutations and audit.
+- `audit.read` scope with user-scoped REST, CLI, MCP and management-UI audit access.
+- Request correlation IDs on public API responses and structured errors.
+- MCP binary in Docker images, Compose profile and GitHub release artifacts.
+- Repository invariant checking for registry-declared MCP tools.
+
+### Changed
+
+- Rust MSRV raised to 1.88 for the MCP SDK.
+- MCP starts read-only; write tools require explicit `--allow-write`.
+- CLI send/draft/reply/forward require a caller-supplied stable idempotency key.
+- Browser compose retries reuse one idempotency key until success/reset.
+
+### Security
+
+- Streamable HTTP MCP uses the request bearer PAT rather than a shared privileged identity.
+- MCP message/attachment output is labeled untrusted external content; message HTML is omitted from `mail_read`.
+- MCP attachment download/upload limits reduce accidental model-context and memory abuse.
+- Audit output remains metadata-only and user-scoped.
+
 ## [0.3.0] - 2026-09-22
 
 ### Added

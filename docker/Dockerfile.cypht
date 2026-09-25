@@ -1,3 +1,11 @@
-ARG CYPHT_IMAGE=cypht/cypht:2.12.2
+ARG CYPHT_IMAGE=cypht/cypht:2.12.0
 FROM ${CYPHT_IMAGE}
 COPY cypht-module/gateway /usr/local/share/cypht/modules/gateway
+COPY docker/cypht-gateway-config.php /usr/local/share/cypht/config/gateway.php
+COPY docker/cypht-gateway-entrypoint.sh /usr/local/bin/cypht-gateway-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/cypht-gateway-entrypoint.sh \
+    && printf 'auto_prepend_file=/usr/local/share/cypht/modules/gateway/bootstrap.php\n' \
+       > /usr/local/etc/php/conf.d/cypht-gateway.ini
+ENV USER_CONFIG_TYPE=custom:Gateway_User_Config_File \
+    CYPHT_MODULES=core,contacts,local_contacts,feeds,imap,smtp,account,idle_timer,calendar,themes,nux,developer,history,saved_searches,advanced_search,highlights,profiles,inline_message,imap_folders,keyboard_shortcuts,tags,brute_force,api_login,gateway
+ENTRYPOINT ["/usr/local/bin/cypht-gateway-entrypoint.sh"]

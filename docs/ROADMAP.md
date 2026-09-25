@@ -31,7 +31,17 @@
 - idempotency keys for external sends and draft creation
 - matching REST, CLI and browser UI operations
 
-## v0.4.x — Cypht feature coverage
+## v0.4.x — MCP and AI-safe automation ✓
+
+- MCP stdio and Streamable HTTP
+- read-only MCP by default with explicit write-mode opt-in
+- mail tool parity for REST mail operations
+- AI-safe untrusted-content wrappers and attachment limits
+- audit REST/CLI/MCP/UI
+- request IDs and stronger retry/idempotency behavior
+- MCP binary in Docker and GitHub releases
+
+## v0.5.x — broader Cypht feature parity
 
 - tags and saved searches
 - contacts
@@ -40,15 +50,8 @@
 - feeds
 - settings/profile administration
 - optional PGP integration
-
-## v0.5.x — AI and automation surfaces
-
-- MCP stdio and Streamable HTTP
-- complete AI-safe tool surface
-- SSE events
-- signed webhooks
-- audit UI
-- Cypht compatibility matrix
+- SSE events and signed webhooks
+- expanded Cypht compatibility matrix
 
 ## v1.0.0
 

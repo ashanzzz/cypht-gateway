@@ -3,8 +3,8 @@ info:
   title: Cypht Gateway API
   version: v1
   description: >-
-    Stable automation contract over Cypht. Gateway v0.3 adds sending, drafts,
-    scheduled sending, reply/forward, attachment transfer and message mutations.
+    Stable automation contract over Cypht. Gateway v0.4 adds MCP parity for the mail surface,
+    audit visibility, request correlation and safer AI/CLI idempotency behavior.
 servers:
   - url: /api/v1
 security:
@@ -29,6 +29,15 @@ paths:
     get:
       operationId: me
       responses: {"200": {description: Current principal}, "401": {$ref: "#/components/responses/Error"}}
+  /audit:
+    get:
+      operationId: listAudit
+      parameters:
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200": {description: User-scoped Gateway audit page, content: {application/json: {schema: {$ref: "#/components/schemas/AuditPage"}}}}
+        "403": {$ref: "#/components/responses/Error"}
   /tokens:
     get:
       operationId: listTokens
@@ -46,6 +55,236 @@ paths:
     get:
       operationId: listAccounts
       responses: {"200": {description: Configured mail accounts, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Account"}}}}}, "403": {$ref: "#/components/responses/Error"}}
+  /contacts:
+    get:
+      operationId: listContacts
+      x-required-scope: contacts.read
+      parameters:
+        - {name: query, in: query, schema: {type: string, maxLength: 200}}
+      responses:
+        "200": {description: Local contacts, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Contact"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createContact
+      x-required-scope: contacts.write
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ContactCreateRequest"}}}}
+      responses:
+        "201": {description: Contact created, content: {application/json: {schema: {$ref: "#/components/schemas/Contact"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /contacts/{id}:
+    get:
+      operationId: readContact
+      x-required-scope: contacts.read
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Local contact, content: {application/json: {schema: {$ref: "#/components/schemas/Contact"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      operationId: updateContact
+      x-required-scope: contacts.write
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ContactUpdateRequest"}}}}
+      responses:
+        "200": {description: Updated contact, content: {application/json: {schema: {$ref: "#/components/schemas/Contact"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    delete:
+      operationId: deleteContact
+      x-required-scope: contacts.write
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: confirm, in: query, required: true, schema: {type: boolean, enum: [true]}}
+      responses:
+        "204": {description: Contact deleted}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /tags:
+    get:
+      operationId: listTags
+      x-required-scope: tags.read
+      responses:
+        "200": {description: User tags, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Tag"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createTag
+      x-required-scope: tags.write
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TagCreateRequest"}}}}
+      responses:
+        "201": {description: Tag created, content: {application/json: {schema: {$ref: "#/components/schemas/Tag"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /tags/{id}:
+    patch:
+      operationId: updateTag
+      x-required-scope: tags.write
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/TagUpdateRequest"}}}}
+      responses:
+        "200": {description: Updated tag, content: {application/json: {schema: {$ref: "#/components/schemas/Tag"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    delete:
+      operationId: deleteTag
+      x-required-scope: tags.write
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: confirm, in: query, required: true, schema: {type: boolean, enum: [true]}}
+      responses:
+        "204": {description: Tag deleted}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /messages/{id}/tags/{tag_id}:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+      - {name: tag_id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: addMessageTag
+      x-required-scope: tags.write
+      x-additional-scopes: [mail.read]
+      responses:
+        "200": {description: Tag added to a message, content: {application/json: {schema: {$ref: "#/components/schemas/ActionResult"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+    delete:
+      operationId: removeMessageTag
+      x-required-scope: tags.write
+      x-additional-scopes: [mail.read]
+      parameters:
+        - {name: confirm, in: query, required: true, schema: {type: boolean, enum: [true]}}
+      responses:
+        "204": {description: Tag removed from a message}
+        "400": {$ref: "#/components/responses/Error"}  /feeds:
+    get:
+      operationId: listFeeds
+      x-required-scope: feeds.read
+      description: List RSS/Atom feed subscriptions. Feed metadata is read-only in this baseline.
+      responses:
+        "200": {description: List of feed subscriptions, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/FeedSubscription"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /feeds/{id}:
+    get:
+      operationId: getFeed
+      x-required-scope: feeds.read
+      description: Read RSS/Atom feed subscription metadata by opaque ID.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {$ref: "#/components/schemas/ResourceId"}
+      responses:
+        "200": {description: Feed subscription metadata, content: {application/json: {schema: {$ref: "#/components/schemas/FeedSubscription"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+
+
+  /sieve/status:
+    get:
+      operationId: getSieveStatus
+      x-required-scope: sieve.read
+      description: Redacted Sieve capability status. This endpoint never returns scripts, credentials, hosts, or raw remote errors.
+      responses:
+        "200": {description: Redacted per-account Sieve status, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SieveStatus"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /calendars:
+    get:
+      operationId: listCalendars
+      x-required-scope: calendar.read
+      description: A synthetic user calendar backed by Cypht 2.12.0 calendar_events.
+      responses:
+        "200": {description: User calendar, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Calendar"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /calendars/{calendar_id}/events:
+    get:
+      operationId: listCalendarEvents
+      x-required-scope: calendar.read
+      parameters:
+        - {name: calendar_id, in: path, required: true, schema: {$ref: "#/components/schemas/ResourceId"}}
+        - {name: start, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: end, in: query, required: true, schema: {type: string, format: date-time}}
+      responses:
+        "200": {description: Calendar event occurrences, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/CalendarEvent"}}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createCalendarEvent
+      x-required-scope: calendar.write
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEventCreateRequest"}}}}
+      parameters:
+        - {name: calendar_id, in: path, required: true, schema: {$ref: "#/components/schemas/ResourceId"}}
+      responses:
+        "201": {description: Calendar event created, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEvent"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /calendars/{calendar_id}/events/{event_id}:
+    delete:
+      operationId: deleteCalendarEvent
+      x-required-scope: calendar.write
+      parameters:
+        - {name: calendar_id, in: path, required: true, schema: {$ref: "#/components/schemas/ResourceId"}}
+        - {name: event_id, in: path, required: true, schema: {$ref: "#/components/schemas/ResourceId"}}
+        - {name: confirm, in: query, required: true, schema: {type: boolean, enum: [true]}}
+      responses:
+        "204": {description: Calendar event sequence deleted}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /saved-searches:
+    get:
+      operationId: listSavedSearches
+      x-required-scope: searches.read
+      description: User-wide Cypht settings. Account-restricted PATs are denied because a saved query can refer to other accounts.
+      responses:
+        "200": {description: Saved searches, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SavedSearch"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createSavedSearch
+      x-required-scope: searches.write
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SavedSearchCreateRequest"}}}}
+      responses:
+        "201": {description: Saved search created, content: {application/json: {schema: {$ref: "#/components/schemas/SavedSearch"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
+  /saved-searches/{id}:
+    get:
+      operationId: readSavedSearch
+      x-required-scope: searches.read
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Saved search metadata, content: {application/json: {schema: {$ref: "#/components/schemas/SavedSearch"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      operationId: updateSavedSearch
+      x-required-scope: searches.write
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SavedSearchUpdateRequest"}}}}
+      responses:
+        "200": {description: Updated metadata. A successful rename preserves the opaque ID., content: {application/json: {schema: {$ref: "#/components/schemas/SavedSearch"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+    delete:
+      operationId: deleteSavedSearch
+      x-required-scope: searches.write
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: confirm, in: query, required: true, schema: {type: boolean, enum: [true]}}
+      responses:
+        "204": {description: Saved search deleted. The ID is retired and will not be reused.}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
   /profiles:
     get:
       operationId: listProfiles
@@ -54,13 +293,13 @@ paths:
     get:
       operationId: listMailboxes
       parameters: [{$ref: "#/components/parameters/Id"}]
-      responses: {"200": {description: Mailboxes}, "403": {$ref: "#/components/responses/Error"}}
+      responses: {"200": {description: Mailboxes, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Mailbox"}}}}}, "403": {$ref: "#/components/responses/Error"}}
   /messages:
     get:
       operationId: listMessages
       parameters:
-        - {name: account_id, in: query, schema: {type: string}}
-        - {name: mailbox_id, in: query, schema: {type: string}}
+        - {name: account_id, in: query, schema: {$ref: "#/components/schemas/ResourceId"}}
+        - {name: mailbox_id, in: query, schema: {$ref: "#/components/schemas/ResourceId"}}
         - {name: offset, in: query, schema: {type: integer, minimum: 0}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
       responses: {"200": {description: Message page, content: {application/json: {schema: {$ref: "#/components/schemas/MessagePage"}}}}, "403": {$ref: "#/components/responses/Error"}}
@@ -68,7 +307,7 @@ paths:
     post:
       operationId: searchMessages
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SearchRequest"}}}}
-      responses: {"200": {description: Search results}, "400": {$ref: "#/components/responses/Error"}}
+      responses: {"200": {description: Search results, content: {application/json: {schema: {$ref: "#/components/schemas/MessagePage"}}}}, "400": {$ref: "#/components/responses/Error"}}
   /messages/send:
     post:
       operationId: sendMessage
@@ -79,7 +318,7 @@ paths:
     get:
       operationId: readMessage
       parameters: [{$ref: "#/components/parameters/Id"}]
-      responses: {"200": {description: Parsed message}, "403": {$ref: "#/components/responses/Error"}}
+      responses: {"200": {description: Parsed message, content: {application/json: {schema: {$ref: "#/components/schemas/Message"}}}}, "403": {$ref: "#/components/responses/Error"}}
     patch:
       operationId: updateMessage
       parameters: [{$ref: "#/components/parameters/Id"}]
@@ -134,7 +373,7 @@ components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer}
   parameters:
-    Id: {name: id, in: path, required: true, schema: {type: string}}
+    Id: {name: id, in: path, required: true, description: Type-specific opaque resource ID. Previously issued signed v1 mail IDs remain accepted during migration., schema: {type: string}}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 200}}
   responses:
     Error:
@@ -150,25 +389,35 @@ components:
       type: object
       required: [access_token, token_type, expires_in]
       properties: {access_token: {type: string}, token_type: {type: string}, expires_in: {type: integer}}
+    ResourceId:
+      type: string
+      description: Version-2 opaque, owner- and source-bound ID. Existing signed v1 mail IDs remain accepted for migration.
+    AccountAllowlistId:
+      type: string
+      description: New PAT allow-lists require a version-2 account ID returned by GET /accounts. Existing PATs may retain signed v1 account IDs during migration.
     Scope:
       type: string
-      enum: [accounts.read, mail.read, mail.search, attachments.read, mail.send, mail.modify, mail.delete, tokens.manage]
+      enum: [accounts.read, mail.read, mail.search, attachments.read, mail.send, mail.modify, mail.delete, tokens.manage, audit.read, contacts.read, contacts.write, tags.read, tags.write, searches.read, searches.write, calendar.read, calendar.write, feeds.read, feeds.write, sieve.read]
     CreateTokenRequest:
       type: object
       required: [name]
       properties:
         name: {type: string, minLength: 1, maxLength: 100}
         scopes: {type: array, items: {$ref: "#/components/schemas/Scope"}}
-        account_allowlist: {type: array, items: {type: string}}
+        account_allowlist: {type: array, items: {$ref: "#/components/schemas/AccountAllowlistId"}}
         expires_in_days: {type: [integer, "null"], minimum: 1, maximum: 3650}
     Account:
       type: object
       required: [id, name, protocol, can_send]
-      properties: {id: {type: string}, name: {type: string}, email: {type: [string, "null"]}, protocol: {type: string}, server: {type: [string, "null"]}, can_send: {type: boolean}}
+      properties: {id: {$ref: "#/components/schemas/ResourceId"}, name: {type: string}, email: {type: [string, "null"]}, protocol: {type: string}, server: {type: [string, "null"]}, can_send: {type: boolean}}
+    Mailbox:
+      type: object
+      required: [id, account_id, name, display_name, selectable]
+      properties: {id: {$ref: "#/components/schemas/ResourceId"}, account_id: {$ref: "#/components/schemas/ResourceId"}, name: {type: string}, display_name: {type: string}, role: {type: [string, "null"]}, total: {type: [integer, "null"]}, unread: {type: [integer, "null"]}, selectable: {type: boolean}}
     Profile:
       type: object
       required: [id, name, address, reply_to, signature, is_default]
-      properties: {id: {type: string}, name: {type: string}, address: {type: string}, reply_to: {type: string}, signature: {type: string}, account_id: {type: [string, "null"]}, is_default: {type: boolean}}
+      properties: {id: {type: string}, name: {type: string}, address: {type: string}, reply_to: {type: string}, signature: {type: string}, account_id: {anyOf: [{$ref: "#/components/schemas/ResourceId"}, {type: "null"}]}, is_default: {type: boolean}}
     Address:
       type: object
       required: [email]
@@ -179,6 +428,41 @@ components:
     MessageSummary:
       type: object
       additionalProperties: true
+      required: [id, account_id, mailbox_id, subject, from, to, date, timestamp, unread, flagged, has_attachments, preview]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        account_id: {$ref: "#/components/schemas/ResourceId"}
+        mailbox_id: {$ref: "#/components/schemas/ResourceId"}
+        subject: {type: string}
+        from: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        to: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        date: {type: [string, "null"]}
+        timestamp: {type: [integer, "null"]}
+        unread: {type: boolean}
+        flagged: {type: boolean}
+        has_attachments: {type: boolean}
+        preview: {type: [string, "null"]}
+    Message:
+      type: object
+      required: [id, account_id, mailbox_id, subject, from, to, cc, date, message_id_header, in_reply_to, body, attachments, headers]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        account_id: {$ref: "#/components/schemas/ResourceId"}
+        mailbox_id: {$ref: "#/components/schemas/ResourceId"}
+        subject: {type: string}
+        from: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        to: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        cc: {type: array, items: {$ref: "#/components/schemas/Address"}}
+        date: {type: [string, "null"]}
+        message_id_header: {type: [string, "null"]}
+        in_reply_to: {type: [string, "null"]}
+        body: {$ref: "#/components/schemas/MessageBody"}
+        attachments: {type: array, items: {$ref: "#/components/schemas/Attachment"}}
+        headers: {type: object}
+    Attachment:
+      type: object
+      required: [id, inline]
+      properties: {id: {$ref: "#/components/schemas/ResourceId"}, filename: {type: [string, "null"]}, content_type: {type: [string, "null"]}, size: {type: [integer, "null"]}, inline: {type: boolean}}
     MessagePage:
       type: object
       required: [messages]
@@ -186,7 +470,7 @@ components:
     SearchRequest:
       type: object
       required: [query]
-      properties: {account_ids: {type: array, items: {type: string}}, mailbox_id: {type: [string, "null"]}, query: {type: string}, limit: {type: [integer, "null"], minimum: 1, maximum: 100}}
+      properties: {account_ids: {type: array, items: {$ref: "#/components/schemas/ResourceId"}}, mailbox_id: {anyOf: [{$ref: "#/components/schemas/ResourceId"}, {type: "null"}]}, query: {type: string}, limit: {type: [integer, "null"], minimum: 1, maximum: 100}}
     SendMessageRequest:
       type: object
       properties:
@@ -196,12 +480,12 @@ components:
         bcc: {type: array, items: {$ref: "#/components/schemas/Address"}}
         subject: {type: string}
         body: {$ref: "#/components/schemas/MessageBody"}
-        attachment_ids: {type: array, items: {type: string}}
+        attachment_ids: {type: array, items: {type: string, description: Session-bound upload ID}}
         schedule_at: {type: [string, "null"], description: Future ISO-8601 date/time}
         delivery_receipt: {type: boolean}
     ReplyMessageRequest:
       type: object
-      properties: {profile_id: {type: [string, "null"]}, reply_all: {type: boolean}, body: {$ref: "#/components/schemas/MessageBody"}, attachment_ids: {type: array, items: {type: string}}, schedule_at: {type: [string, "null"]}}
+      properties: {profile_id: {type: [string, "null"]}, reply_all: {type: boolean}, body: {$ref: "#/components/schemas/MessageBody"}, attachment_ids: {type: array, items: {type: string, description: Session-bound upload ID}}, schedule_at: {type: [string, "null"]}}
     ForwardMessageRequest:
       allOf:
         - {$ref: "#/components/schemas/SendMessageRequest"}
@@ -212,19 +496,238 @@ components:
     MoveMessageRequest:
       type: object
       required: [mailbox_id]
-      properties: {mailbox_id: {type: string}}
+      properties: {mailbox_id: {$ref: "#/components/schemas/ResourceId"}}
+    Contact:
+      type: object
+      required: [id, source, name, email]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        source: {type: string, enum: [local]}
+        name: {type: string}
+        email: {type: string, format: email}
+        phone: {type: [string, "null"]}
+        group: {type: [string, "null"]}
+    ContactCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 500}
+        email: {type: string, format: email, maxLength: 320}
+        phone: {type: string, maxLength: 500}
+        group: {type: string, maxLength: 500}
+    ContactUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 500}
+        email: {type: string, format: email, maxLength: 320}
+        phone: {type: string, maxLength: 500}
+        group: {type: string, maxLength: 500}
+    Tag:
+      type: object
+      required: [id, name, color]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        name: {type: string}
+        color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$'}
+        parent_id: {type: [string, "null"]}
+    TagCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$', description: Must be in the Cypht tag palette}
+    TagUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$', description: Must be in the Cypht tag palette}    FeedSubscription:
+      type: object
+      additionalProperties: false
+      required: [id, name, url]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        name: {type: string}
+        url: {type: string}
+
+    SieveStatus:
+      type: object
+      additionalProperties: false
+      required: [account_id, name, protocol, enabled, configured, status, remote_probe]
+      properties:
+        account_id: {$ref: "#/components/schemas/ResourceId"}
+        name: {type: string}
+        protocol: {type: string}
+        enabled: {type: boolean}
+        configured: {type: boolean}
+        status: {type: string, enum: [disabled, configured, not_configured]}
+        remote_probe: {type: boolean, const: false}
+    Calendar:
+      type: object
+      additionalProperties: false
+      required: [id, name, scope, provider, capabilities]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        name: {type: string}
+        scope: {type: string, const: user}
+        provider: {type: string, const: cypht}
+        timezone: {type: [string, "null"]}
+        capabilities: {type: array, items: {type: string}}
+    CalendarEvent:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, starts_at, occurrence_at, repeat_interval]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        title: {type: string, maxLength: 500}
+        description: {type: string, maxLength: 20000}
+        starts_at: {type: string, format: date-time}
+        occurrence_at: {type: string, format: date-time}
+        repeat_interval: {type: string, enum: [none, day, week, month, year]}
+    CalendarEventCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [title, starts_at]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 500}
+        description: {type: string, maxLength: 20000}
+        starts_at: {type: string, format: date-time}
+        repeat_interval: {type: string, enum: [none, day, week, month, year]}
+    SavedSearch:
+      type: object
+      additionalProperties: false
+      required: [id, name, type]
+      properties:
+        id: {$ref: "#/components/schemas/ResourceId"}
+        name: {type: string, minLength: 1, maxLength: 100}
+        type: {type: string, enum: [simple, advanced]}
+        query: {type: [string, "null"], maxLength: 1000}
+        since: {type: [string, "null"], maxLength: 100}
+        field: {type: [string, "null"], enum: [TEXT, BODY, FROM, SUBJECT, TO, CC, null]}
+        advanced: {anyOf: [{$ref: "#/components/schemas/AdvancedSavedSearchData"}, {type: "null"}]}
+    SavedSearchCreateRequest:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [name, type, query]
+          properties:
+            name: {type: string, minLength: 1, maxLength: 100}
+            type: {type: string, const: simple}
+            query: {type: string, minLength: 1, maxLength: 1000}
+            since: {type: string, enum: [today, "-1 week", "-2 weeks", "-4 weeks", "-6 weeks", "-6 months", "-1 year", "-5 years"]}
+            field: {type: string, enum: [TEXT, BODY, FROM, SUBJECT, TO, CC]}
+        - type: object
+          additionalProperties: false
+          required: [name, type, advanced]
+          properties:
+            name: {type: string, minLength: 1, maxLength: 100}
+            type: {type: string, const: advanced}
+            advanced: {$ref: "#/components/schemas/AdvancedSavedSearchData"}
+    SavedSearchUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        query: {type: string, minLength: 1, maxLength: 1000}
+        since: {type: string, enum: [today, "-1 week", "-2 weeks", "-4 weeks", "-6 weeks", "-6 months", "-1 year", "-5 years"]}
+        field: {type: string, enum: [TEXT, BODY, FROM, SUBJECT, TO, CC]}
+        advanced: {$ref: "#/components/schemas/AdvancedSavedSearchData"}
+    AdvancedSavedSearchData:
+      type: object
+      additionalProperties: false
+      required: [terms, targets, sources, times, other]
+      properties:
+        terms:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [term]
+            properties:
+              term: {type: string, minLength: 1, maxLength: 500}
+              condition: {oneOf: [{type: boolean}, {type: string, enum: [and, or]}, {type: "null"}]}
+        targets:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [target, orig]
+            properties:
+              target: {type: string, maxLength: 78}
+              orig: {type: string, enum: [TEXT, BODY, header, custom]}
+              condition: {oneOf: [{type: boolean}, {type: string, enum: [and, or]}, {type: "null"}]}
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [account_id]
+            properties:
+              account_id: {$ref: "#/components/schemas/ResourceId"}
+              mailbox_id: {anyOf: [{$ref: "#/components/schemas/ResourceId"}, {type: "null"}]}
+              all_folders: {type: boolean, default: false}
+              subfolders: {type: boolean, default: false}
+        times:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [from, to]
+            properties:
+              from: {type: string, format: date}
+              to: {type: string, format: date}
+        other:
+          type: object
+          additionalProperties: false
+          required: [limit]
+          properties:
+            limit: {type: integer, minimum: 1, maximum: 1000}
+            flags: {type: array, maxItems: 8, items: {type: string, enum: [SEEN, UNSEEN, ANSWERED, UNANSWERED, FLAGGED, UNFLAGGED, DELETED, UNDELETED]}}
+            charset: {type: [string, "null"], enum: [UTF-8, ASCII, null]}
     Upload:
       type: object
       required: [id, filename, content_type, size]
-      properties: {id: {type: string}, filename: {type: string}, content_type: {type: string}, size: {type: integer}}
+      properties: {id: {type: string, description: Session-bound upload ID}, filename: {type: string}, content_type: {type: string}, size: {type: integer}}
     MailWriteResult:
       type: object
       required: [status, scheduled]
-      properties: {status: {type: string}, message_id_header: {type: [string, "null"]}, message_id: {type: [string, "null"]}, scheduled: {type: boolean}}
+      properties: {status: {type: string}, message_id_header: {type: [string, "null"]}, message_id: {anyOf: [{$ref: "#/components/schemas/ResourceId"}, {type: "null"}]}, scheduled: {type: boolean}}
     ActionResult:
       type: object
       required: [status]
-      properties: {status: {type: string}, mailbox_id: {type: [string, "null"]}}
+      properties: {status: {type: string}, mailbox_id: {anyOf: [{$ref: "#/components/schemas/ResourceId"}, {type: "null"}]}, tag_sync: {type: [string, "null"], enum: [synced, pending, none, disabled, failed, null]}}
+    AuditEntry:
+      type: object
+      required: [id, created_at, username, operation, success]
+      properties:
+        id: {type: integer}
+        created_at: {type: integer}
+        username: {type: string}
+        auth_id: {type: [string, "null"]}
+        operation: {type: string}
+        resource: {type: [string, "null"]}
+        success: {type: boolean}
+        detail: {type: [string, "null"]}
+    AuditPage:
+      type: object
+      required: [entries]
+      properties:
+        entries: {type: array, items: {$ref: "#/components/schemas/AuditEntry"}}
+        next_offset: {type: [integer, "null"]}
     Error:
       type: object
       required: [error]

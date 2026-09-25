@@ -13,9 +13,55 @@ services:
       RUST_LOG: gatewayd=info,tower_http=info
     volumes:
       - gateway-data:/var/lib/cypht-gateway
+    networks: [gateway-net]
     ports:
-      - "8080:8080"
+      - "${GATEWAY_HOST_IP:-127.0.0.1}:${GATEWAY_HOST_PORT:-18080}:8080"
+    restart: unless-stopped
+
+  mcp:
+    profiles: ["mcp", "edge"]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    entrypoint: ["/usr/local/bin/cypht-mcp"]
+    command:
+      - --transport
+      - http
+      - --bind
+      - 0.0.0.0:8790
+      - --allowed-host
+      - localhost
+      - --allowed-host
+      - 127.0.0.1
+      - --allowed-host
+      - ${GATEWAY_PUBLIC_HOST:-127.0.0.1}
+      - --allowed-origin
+      - ${GATEWAY_PUBLIC_ORIGIN:-http://127.0.0.1:8088}
+    environment:
+      CYPHT_GATEWAY_URL: http://gateway:8080
+      CYPHT_MCP_ALLOW_WRITE: "false"
+      RUST_LOG: cypht_mcp=info
+    depends_on: [gateway]
+    networks: [gateway-net]
+    ports:
+      - "127.0.0.1:8790:8790"
+    restart: unless-stopped
+
+  edge:
+    image: nginx:stable-alpine
+    profiles: ["edge"]
+    volumes:
+      - ./nginx/gateway-edge.conf:/etc/nginx/templates/default.conf.template:ro
+    depends_on: [gateway, mcp]
+    networks: [gateway-net]
+    ports:
+      - "${GATEWAY_EDGE_HOST_IP:-127.0.0.1}:${GATEWAY_EDGE_HOST_PORT:-8088}:8088"
     restart: unless-stopped
 
 volumes:
   gateway-data:
+
+networks:
+  gateway-net:
+    name: ${GATEWAY_DOCKER_NETWORK:-cypht-gateway}
+    driver: bridge

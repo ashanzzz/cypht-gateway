@@ -30,4 +30,4 @@ python3 scripts/check-version.py
 
 before committing a release change.
 
-Tags are formatted as `vMAJOR.MINOR.PATCH`.
+Tags are annotated and formatted as `vMAJOR.MINOR.PATCH`. Follow `docs/RELEASING.md` after the release scope and all gates pass. A dirty development tree may sit on an older tag. The version check warns in that case, while tagged CI still requires an exact version match.

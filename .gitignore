@@ -9,3 +9,6 @@
 frontend/node_modules/
 frontend/dist/
 coverage/
+
+deploy/local-dev.env
+deploy/unraid.env

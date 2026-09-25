@@ -11,8 +11,14 @@ pub enum GatewayError {
     PermissionDenied(String),
     #[error("resource not found: {0}")]
     NotFound(String),
+    #[error("resource conflict: {0}")]
+    Conflict(String),
     #[error("invalid request: {0}")]
     InvalidRequest(String),
+    #[error("payload too large: {0}")]
+    PayloadTooLarge(String),
+    #[error("capability unavailable: {0}")]
+    CapabilityUnavailable(String),
     #[error("upstream Cypht error: {0}")]
     Upstream(String),
     #[error("storage error: {0}")]
@@ -43,7 +49,10 @@ impl GatewayError {
             Self::Authentication => "authentication_failed",
             Self::PermissionDenied(_) => "permission_denied",
             Self::NotFound(_) => "not_found",
+            Self::Conflict(_) => "conflict",
             Self::InvalidRequest(_) => "invalid_request",
+            Self::PayloadTooLarge(_) => "payload_too_large",
+            Self::CapabilityUnavailable(_) => "capability_unavailable",
             Self::Upstream(_) => "upstream_error",
             Self::Storage(_) => "storage_error",
             Self::Crypto => "crypto_error",

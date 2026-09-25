@@ -1,4 +1,4 @@
-.PHONY: check test run version-check repo-check frontend-check php-check archive
+.PHONY: check test run run-mcp version-check repo-check frontend-check php-check archive
 
 check: version-check repo-check frontend-check php-check
 	cargo fmt --all -- --check
@@ -9,6 +9,9 @@ test:
 
 run:
 	cargo run -p gatewayd
+
+run-mcp:
+	cargo run -p cypht-mcp -- --transport stdio
 
 version-check:
 	python3 scripts/check-version.py

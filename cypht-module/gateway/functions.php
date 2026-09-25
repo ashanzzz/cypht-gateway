@@ -1,5 +1,53 @@
 <?php
 
+if (!class_exists('Hm_Gateway_Response', false)) {
+class Hm_Gateway_Response {
+    private static $session = null;
+    private static $pending_user_config = null;
+    private static $pending_session_data = null;
+    private static $shutdown_registered = false;
+
+    public static function bind_session($session) {
+        self::$session = $session;
+    }
+
+    public static function bind_user_config_write($user_config, $session, $snapshot) {
+        self::$pending_user_config = $user_config;
+        self::$pending_session_data = $snapshot;
+        self::$session = $session;
+        if (!self::$shutdown_registered) {
+            register_shutdown_function(array(__CLASS__, 'abort_user_config_write'));
+            self::$shutdown_registered = true;
+        }
+    }
+
+    public static function clear_user_config_write() {
+        self::$pending_user_config = null;
+        self::$pending_session_data = null;
+    }
+
+    public static function abort_user_config_write() {
+        if (!self::$pending_user_config) return;
+        try {
+            if (method_exists(self::$pending_user_config, 'gateway_abort_write')) {
+                self::$pending_user_config->gateway_abort_write();
+            }
+            if (self::$session && is_array(self::$pending_session_data)) {
+                self::$session->set('user_data', self::$pending_session_data);
+            }
+        } catch (Throwable $error) {
+            // Keep the public failure bounded. PHP will release remaining locks at request end.
+        }
+        self::clear_user_config_write();
+    }
+
+    public static function close_session() {
+        self::abort_user_config_write();
+        if (self::$session && self::$session->is_active()) {
+            self::$session->end();
+        }
+    }
+}}
 if (!hm_exists('gateway_bridge_version')) {
 function gateway_bridge_version() {
     $path = __DIR__.'/VERSION';
@@ -9,6 +57,7 @@ function gateway_bridge_version() {
 
 if (!hm_exists('gateway_json_ok')) {
 function gateway_json_ok($data) {
+    Hm_Gateway_Response::close_session();
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
     echo json_encode(array('ok' => true, 'data' => $data), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -17,6 +66,7 @@ function gateway_json_ok($data) {
 
 if (!hm_exists('gateway_json_error')) {
 function gateway_json_error($message, $status = 400) {
+    Hm_Gateway_Response::close_session();
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
@@ -31,6 +81,116 @@ function gateway_payload($request) {
     $payload = json_decode($raw, true);
     if (!is_array($payload)) gateway_json_error('payload must be valid JSON', 400);
     return $payload;
+}}
+
+if (!hm_exists('gateway_user_config_storage_supported')) {
+function gateway_user_config_storage_supported($handler) {
+    if (!isset($handler->user_config) || !is_object($handler->user_config) ||
+        !method_exists($handler->user_config, 'gateway_storage_is_safe')) return false;
+    try {
+        return $handler->user_config->gateway_storage_is_safe() === true;
+    } catch (Throwable $error) {
+        return false;
+    }
+}}
+
+if (!hm_exists('gateway_try_durable_user_config_mutation')) {
+function gateway_try_durable_user_config_mutation($handler, $section, $mutation) {
+    if (!gateway_user_config_storage_supported($handler) ||
+        !method_exists($handler->user_config, 'gateway_begin_write') ||
+        !method_exists($handler->user_config, 'gateway_commit_write') || !is_callable($mutation)) {
+        return false;
+    }
+    $session = isset($handler->session) ? $handler->session : null;
+    $username = $session && method_exists($session, 'get')
+        ? (string)$session->get('username', '') : '';
+    $key = isset($handler->request->server['HTTP_X_CYPHT_GATEWAY_CONFIG_KEY'])
+        ? (string)$handler->request->server['HTTP_X_CYPHT_GATEWAY_CONFIG_KEY'] : '';
+    if (!$username || !$key || strlen($key) > 4096 || !$session ||
+        !method_exists($session, 'auth')) return false;
+    try {
+        if (!$session->auth($username, $key)) return false;
+        $snapshot = $session->get('user_data', array());
+        if (!is_array($snapshot) ||
+            !$handler->user_config->gateway_begin_write($username, $key, $section, $snapshot)) return false;
+        Hm_Gateway_Response::bind_user_config_write($handler->user_config, $session, $snapshot);
+        if ($mutation() !== true) {
+            Hm_Gateway_Response::abort_user_config_write();
+            return false;
+        }
+        $values = $handler->user_config->gateway_commit_write($section);
+        if (!is_array($values)) {
+            Hm_Gateway_Response::abort_user_config_write();
+            return false;
+        }
+        $snapshot[$section] = $values;
+        $session->set('user_data', $snapshot);
+        Hm_Gateway_Response::clear_user_config_write();
+        return true;
+    } catch (Throwable $error) {
+        Hm_Gateway_Response::abort_user_config_write();
+        return false;
+    }
+}}
+
+if (!hm_exists('gateway_require_durable_user_config')) {
+function gateway_require_durable_user_config($handler, $section) {
+    $supported = isset($handler->user_config) && is_object($handler->user_config) &&
+        method_exists($handler->user_config, 'gateway_storage_is_safe') &&
+        method_exists($handler->user_config, 'gateway_begin_write');
+    if ($supported) {
+        try {
+            $supported = $handler->user_config->gateway_storage_is_safe() === true;
+        } catch (Throwable $error) {
+            $supported = false;
+        }
+    }
+    if (!$supported) gateway_json_error('durable user-config writes are unavailable', 501);
+    $session = isset($handler->session) ? $handler->session : null;
+    $username = $session && method_exists($session, 'get')
+        ? (string)$session->get('username', '') : '';
+    $key = isset($handler->request->server['HTTP_X_CYPHT_GATEWAY_CONFIG_KEY'])
+        ? (string)$handler->request->server['HTTP_X_CYPHT_GATEWAY_CONFIG_KEY'] : '';
+    if (!$username || !$key || strlen($key) > 4096 || !$session ||
+        !method_exists($session, 'auth') || !$session->auth($username, $key)) {
+        gateway_json_error('user-config authentication failed', 403);
+    }
+    $snapshot = $session->get('user_data', array());
+    if (!is_array($snapshot)) $snapshot = array();
+    try {
+        if (!$handler->user_config->gateway_begin_write($username, $key, $section, $snapshot)) {
+            gateway_json_error('durable user-config writes are unavailable', 501);
+        }
+    } catch (Throwable $error) {
+        if (class_exists('Gateway_User_Config_Conflict', false) &&
+            $error instanceof Gateway_User_Config_Conflict) {
+            gateway_json_error('user-config write conflict', 409);
+        }
+        gateway_json_error('durable user-config writes are unavailable', 501);
+    }
+    Hm_Gateway_Response::bind_user_config_write($handler->user_config, $session, $snapshot);
+    return $snapshot;
+}}
+
+if (!hm_exists('gateway_commit_durable_user_config')) {
+function gateway_commit_durable_user_config($handler, $section, $snapshot) {
+    try {
+        $values = $handler->user_config->gateway_commit_write($section);
+        if (!is_array($values)) {
+            throw new RuntimeException('user-config commit verification failed');
+        }
+        $snapshot[$section] = $values;
+        $handler->session->set('user_data', $snapshot);
+        Hm_Gateway_Response::clear_user_config_write();
+        return true;
+    } catch (Throwable $error) {
+        Hm_Gateway_Response::abort_user_config_write();
+        if (class_exists('Gateway_User_Config_Conflict', false) &&
+            $error instanceof Gateway_User_Config_Conflict) {
+            gateway_json_error('user-config write conflict', 409);
+        }
+        gateway_json_error('durable user-config write failed', 502);
+    }
 }}
 
 if (!hm_exists('gateway_safe_account')) {
@@ -50,6 +210,26 @@ function gateway_safe_account($id, $server, $can_send = false) {
     );
 }}
 
+if (!hm_exists('gateway_action_succeeded')) {
+function gateway_action_succeeded($result) {
+    if (is_array($result)) return !empty($result['status']);
+    return $result === true;
+}}
+
+if (!hm_exists('gateway_action_new_uid')) {
+function gateway_action_new_uid($result, $old_uid) {
+    if (!is_array($result) || !isset($result['responses']) || !is_array($result['responses'])) return null;
+    foreach ($result['responses'] as $response) {
+        if (!is_array($response) || !isset($response['oldUid'], $response['newUid'])) continue;
+        $old = $response['oldUid'];
+        $new = $response['newUid'];
+        if ((is_string($old) || is_int($old)) && (string)$old === (string)$old_uid &&
+            (is_string($new) || is_int($new)) && (string)$new !== '') {
+            return (string)$new;
+        }
+    }
+    return null;
+}}
 if (!hm_exists('gateway_folder_role')) {
 function gateway_folder_role($name, $details) {
     if (isset($details['special']) && is_string($details['special']) && $details['special']) {
@@ -281,6 +461,13 @@ function gateway_build_mime($handler, $payload, $profile, $schedule = '') {
     return array($mime, $from, $upload_ids);
 }}
 
+if (!hm_exists('gateway_safe_stored_uid')) {
+function gateway_safe_stored_uid($uid) {
+    if (is_int($uid) || is_string($uid)) {
+        return (string)$uid !== '' ? (string)$uid : null;
+    }
+    return null;
+}}
 if (!hm_exists('gateway_send_now')) {
 function gateway_send_now($handler, $payload, $profile) {
     $smtp_id = isset($profile['smtp_id']) ? (string)$profile['smtp_id'] : '';
@@ -306,7 +493,13 @@ function gateway_send_now($handler, $payload, $profile) {
         $imap = Hm_IMAP_List::get_connected_mailbox($imap_id, $handler->cache);
         if ($imap && $imap->authed() && $imap_details) {
             $mime->set_original_bcc_header();
-            list($saved_uid, $saved_folder) = save_sent_msg($handler, $imap_id, $imap, $imap_details, $mime->get_mime_msg(), $mime->get_headers()['Message-Id'], false);
+            $save_result = save_sent_msg($handler, $imap_id, $imap, $imap_details, $mime->get_mime_msg(), $mime->get_headers()['Message-Id'], false);
+            if (is_array($save_result) && count($save_result) >= 2) {
+                list($saved_uid, $saved_folder) = $save_result;
+                if ($saved_uid !== true && gateway_safe_stored_uid($saved_uid) === null) {
+                    $saved_folder = null;
+                }
+            }
         }
     }
     gateway_remove_uploads($handler, $upload_ids);
@@ -315,7 +508,7 @@ function gateway_send_now($handler, $payload, $profile) {
         'message_id_header' => $mime->get_headers()['Message-Id'] ?? null,
         'account_id' => $imap_id,
         'folder' => $saved_folder,
-        'uid' => $saved_uid ? (string)$saved_uid : null,
+        'uid' => gateway_safe_stored_uid($saved_uid),
         'scheduled' => false
     );
 }}
@@ -342,13 +535,14 @@ function gateway_store_draft($handler, $payload, $profile, $schedule = '') {
     if (!$imap->folder_exists($folder) && !$imap->create_folder($folder)) gateway_json_error('draft/scheduled folder is unavailable', 409);
     $uid = $imap->store_message($folder, $mime->get_mime_msg(), false, true);
     if (!$uid) gateway_json_error('failed to store draft', 502);
+    if (is_array($uid) || is_object($uid)) gateway_json_error('draft save result is uncertain; do not retry with a new key', 502);
     gateway_remove_uploads($handler, $upload_ids);
     return array(
         'status' => $schedule !== '' ? 'scheduled' : 'draft',
         'message_id_header' => $mime->get_headers()['Message-Id'] ?? null,
         'account_id' => $imap_id,
         'folder' => $folder,
-        'uid' => (string)$uid,
+        'uid' => gateway_safe_stored_uid($uid),
         'scheduled' => $schedule !== ''
     );
 }}

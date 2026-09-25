@@ -5,17 +5,58 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: curl, mbstring, sqlite3, sodium
       - run: python3 scripts/check-version.py
       - run: python3 scripts/check-repository.py
+      - run: python3 scripts/check-frontend.py
       - run: find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Cypht 2.12.0 source tests
+        run: |
+          php tests/bridge_contract.php
+          curl --fail --location --retry 3 https://codeload.github.com/cypht-org/cypht/zip/refs/tags/v2.12.0 -o /tmp/cypht-v2.12.0.zip
+          echo "44cf3a67438ed1d0921dbc1cab58a6939b1a09667156984ca193dbce57a24605  /tmp/cypht-v2.12.0.zip" | sha256sum -c -
+          unzip -q /tmp/cypht-v2.12.0.zip -d /tmp
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 python3 scripts/check-cypht-matrix.py
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_contacts_repo.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_ping.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_api_login_config.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_tags_repo.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_tags.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_saved_searches_repo.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_saved_searches.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_calendar.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_sieve_status.php
+          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_user_config_persistence.php
+      - name: Reject missing or shared Cypht Bridge keys
+        run: |
+          sh -n docker/cypht-gateway-entrypoint.sh
+          if env -u API_LOGIN_KEY GATEWAY_BRIDGE_KEY=ci-test sh docker/cypht-gateway-entrypoint.sh >/dev/null 2>&1; then exit 1; fi
+          if API_LOGIN_KEY=ci-test GATEWAY_BRIDGE_KEY=ci-test sh docker/cypht-gateway-entrypoint.sh >/dev/null 2>&1; then exit 1; fi
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+      - name: Build release binaries
+        run: cargo build --release --workspace
 
   build:
     needs: validate
@@ -35,26 +76,30 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
       - name: Build
         shell: bash
         env:
           BUILD_TIME: ${{ github.event.repository.updated_at }}
-        run: cargo build --release -p gatewayd -p cyphtctl
+        run: cargo build --release -p gatewayd -p cyphtctl -p cypht-mcp
       - name: Package Unix
         if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir dist
-          cp target/release/gatewayd target/release/cyphtctl VERSION README.md dist/
+          cp target/release/gatewayd target/release/cyphtctl target/release/cypht-mcp VERSION README.md dist/
           tar -C dist -czf cypht-gateway-${{ github.ref_name }}-${{ matrix.artifact }}.tar.gz .
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target/release/gatewayd.exe,target/release/cyphtctl.exe,VERSION,README.md dist/
+          Copy-Item target/release/gatewayd.exe,target/release/cyphtctl.exe,target/release/cypht-mcp.exe,VERSION,README.md dist/
           Compress-Archive -Path dist/* -DestinationPath cypht-gateway-${{ github.ref_name }}-${{ matrix.artifact }}.zip
       - uses: actions/upload-artifact@v4
         with:
@@ -64,24 +109,128 @@ jobs:
             *.zip
           if-no-files-found: error
 
-  publish:
-    needs: build
+  container-images:
+    needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gateway image metadata
+        id: gateway-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - name: Cypht Bridge image metadata
+        id: bridge-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-cypht-bridge
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.description=Private Gateway module on Cypht 2.12.0
+      - name: Build and publish Gateway image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.gateway-meta.outputs.tags }}
+          labels: ${{ steps.gateway-meta.outputs.labels }}
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,scope=gateway,mode=max
+      - name: Build and publish Cypht 2.12.0 Bridge image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.cypht
+          build-args: CYPHT_IMAGE=cypht/cypht:2.12.0
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.bridge-meta.outputs.tags }}
+          labels: ${{ steps.bridge-meta.outputs.labels }}
+          cache-from: type=gha,scope=cypht-bridge
+          cache-to: type=gha,scope=cypht-bridge,mode=max
+      - name: All-in-One image metadata
+        id: aio-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-aio
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.description=All-in-One Cypht 2.12.0 Webmail with REST API and MCP server
+      - name: Build and publish All-in-One image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.aio
+          build-args: CYPHT_IMAGE=cypht/cypht:2.12.0
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.aio-meta.outputs.tags }}
+          labels: ${{ steps.aio-meta.outputs.labels }}
+          cache-from: type=gha,scope=cypht-aio
+          cache-to: type=gha,scope=cypht-aio,mode=max
+
+  publish:
+    needs: [build, container-images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
       - name: Package source, bridge and contracts
         run: |
-          git archive --format=zip --prefix="cypht-gateway-${GITHUB_REF_NAME}/" -o "release-assets/cypht-gateway-${GITHUB_REF_NAME}-source.zip" "$GITHUB_REF_NAME"
+          git archive --format=zip --prefix="cypht-gateway-${GITHUB_REF_NAME}/" -o "release-assets/cypht-gateway-${GITHUB_REF_NAME}-git.zip" "$GITHUB_REF_NAME"
+          bash scripts/source-archive.sh release-assets
+          mv "release-assets/cypht-gateway-${GITHUB_REF_NAME}.zip" "release-assets/cypht-gateway-${GITHUB_REF_NAME}-source.zip"
           (cd cypht-module && zip -qr "../release-assets/cypht-gateway-${GITHUB_REF_NAME}-cypht-bridge.zip" gateway)
           cp api/openapi.yaml "release-assets/cypht-gateway-${GITHUB_REF_NAME}-openapi.yaml"
           cp api/capability-registry.yaml "release-assets/cypht-gateway-${GITHUB_REF_NAME}-capabilities.yaml"
           cd release-assets
           sha256sum * > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          unzip -t "cypht-gateway-${GITHUB_REF_NAME}-git.zip"
+          unzip -t "cypht-gateway-${GITHUB_REF_NAME}-source.zip"
+          unzip -t "cypht-gateway-${GITHUB_REF_NAME}-cypht-bridge.zip"
+          mkdir -p /tmp/verify-git /tmp/verify-source /tmp/verify-bridge
+          unzip -q "cypht-gateway-${GITHUB_REF_NAME}-git.zip" -d /tmp/verify-git
+          unzip -q "cypht-gateway-${GITHUB_REF_NAME}-source.zip" -d /tmp/verify-source
+          unzip -q "cypht-gateway-${GITHUB_REF_NAME}-cypht-bridge.zip" -d /tmp/verify-bridge
+          test -f "/tmp/verify-git/cypht-gateway-${GITHUB_REF_NAME}/VERSION"
+          test -f "/tmp/verify-source/cypht-gateway-${GITHUB_REF_NAME}/VERSION"
+          test -f /tmp/verify-bridge/gateway/VERSION
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -12,12 +12,20 @@ class Hm_Handler_gateway_guard extends Hm_Handler_Module {
         if (!$configured || !$provided || !hash_equals((string)$configured, (string)$provided)) {
             gateway_json_error('bridge authentication failed', 403);
         }
+        Hm_Gateway_Response::bind_session($this->session);
     }
 }
 
 class Hm_Handler_gateway_ping extends Hm_Handler_Module {
     public function process() {
-        gateway_json_ok(array('status' => 'ok', 'bridge_version' => gateway_bridge_version()));
+        gateway_json_ok(array(
+            'status' => 'ok',
+            'bridge_version' => gateway_bridge_version(),
+            'cypht_version' => defined('CYPHT_VERSION') ? (string)CYPHT_VERSION : 'unknown',
+            'durable_user_config' => isset($this->user_config) && is_object($this->user_config) &&
+                method_exists($this->user_config, 'gateway_storage_is_safe') &&
+                $this->user_config->gateway_storage_is_safe() === true
+        ));
     }
 }
 
@@ -148,10 +156,15 @@ class Hm_Handler_gateway_attachment extends Hm_Handler_Module {
             if ((string)$candidate['part'] === $part) { $meta = $candidate; break; }
         }
         if (!$meta) gateway_json_error('unknown attachment', 404);
+        $max = (int)env('GATEWAY_MAX_ATTACHMENT_BYTES', 26214400);
+        if ($max < 1) $max = 26214400;
+        if ($meta['size'] !== null && $meta['size'] > $max) gateway_json_error('attachment exceeds download limit', 413);
         $content = $mailbox->get_message_content($folder, $uid, $part);
         if (!is_string($content)) gateway_json_error('attachment could not be read', 502);
+        if (strlen($content) > $max) gateway_json_error('attachment exceeds download limit', 413);
         $filename = basename((string)($meta['filename'] ?: 'attachment.bin'));
         $content_type = (string)($meta['content_type'] ?: 'application/octet-stream');
+        Hm_Gateway_Response::close_session();
         header('Content-Type: '.$content_type);
         header('Content-Disposition: attachment; filename="'.str_replace('"', '', $filename).'"');
         header('Content-Length: '.strlen($content));
@@ -246,11 +259,11 @@ class Hm_Handler_gateway_message_update extends Hm_Handler_Module {
         if (!$mailbox || !$mailbox->authed()) gateway_json_error('mail account authentication failed', 502);
         if (array_key_exists('seen', $payload)) {
             $cmd = $payload['seen'] ? 'READ' : 'UNREAD';
-            if (!$mailbox->message_action($folder, $cmd, array($uid))['status']) gateway_json_error('failed to update seen state', 502);
+            if (!gateway_action_succeeded($mailbox->message_action($folder, $cmd, array($uid)))) gateway_json_error('failed to update seen state', 502);
         }
         if (array_key_exists('flagged', $payload)) {
             $cmd = $payload['flagged'] ? 'FLAG' : 'UNFLAG';
-            if (!$mailbox->message_action($folder, $cmd, array($uid))['status']) gateway_json_error('failed to update flagged state', 502);
+            if (!gateway_action_succeeded($mailbox->message_action($folder, $cmd, array($uid)))) gateway_json_error('failed to update flagged state', 502);
         }
         gateway_json_ok(array('status' => 'updated'));
     }
@@ -267,8 +280,10 @@ class Hm_Handler_gateway_message_move extends Hm_Handler_Module {
         if (!Hm_IMAP_List::dump($id)) gateway_json_error('unknown account', 404);
         $mailbox = Hm_IMAP_List::get_connected_mailbox($id, $this->cache);
         if (!$mailbox || !$mailbox->authed()) gateway_json_error('mail account authentication failed', 502);
-        if (!$mailbox->message_action($folder, 'MOVE', array($uid), $destination)['status']) gateway_json_error('failed to move message', 502);
-        gateway_json_ok(array('status' => 'moved', 'folder' => $destination));
+        $action = $mailbox->message_action($folder, 'MOVE', array($uid), $destination);
+        if (!gateway_action_succeeded($action)) gateway_json_error('failed to move message', 502);
+        $tag_sync = gateway_sync_tag_move($this, $id, $folder, $uid, $destination, $action);
+        gateway_json_ok(array('status' => 'moved', 'folder' => $destination, 'tag_sync' => $tag_sync));
     }
 }
 
@@ -289,8 +304,10 @@ class Hm_Handler_gateway_message_archive extends Hm_Handler_Module {
             $archive = is_array($auto) && isset($auto['archive']) ? $auto['archive'] : null;
         }
         if (!$archive) gateway_json_error('archive folder is not configured', 409);
-        if (!$mailbox->message_action($folder, 'MOVE', array($uid), $archive)['status']) gateway_json_error('failed to archive message', 502);
-        gateway_json_ok(array('status' => 'archived', 'folder' => $archive));
+        $action = $mailbox->message_action($folder, 'MOVE', array($uid), $archive);
+        if (!gateway_action_succeeded($action)) gateway_json_error('failed to archive message', 502);
+        $tag_sync = gateway_sync_tag_move($this, $id, $folder, $uid, $archive, $action);
+        gateway_json_ok(array('status' => 'archived', 'folder' => $archive, 'tag_sync' => $tag_sync));
     }
 }
 
@@ -307,9 +324,11 @@ class Hm_Handler_gateway_message_delete extends Hm_Handler_Module {
         $special = get_special_folders($this, $id);
         $trash = isset($special['trash']) ? $special['trash'] : false;
         if (!$mailbox->delete_message($folder, $uid, $trash)) gateway_json_error('failed to delete message', 502);
+        $tag_sync = gateway_sync_tag_delete($this, $id, $folder, $uid, $trash);
         gateway_json_ok(array(
             'status' => $trash && $trash !== $folder ? 'trashed' : 'deleted',
-            'folder' => $trash && $trash !== $folder ? $trash : null
+            'folder' => $trash && $trash !== $folder ? $trash : null,
+            'tag_sync' => $tag_sync
         ));
     }
 }

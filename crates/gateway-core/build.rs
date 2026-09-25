@@ -15,7 +15,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BUILD_TIME");
 
     let sha = git_output(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".into());
-    let short_sha = git_output(&["rev-parse", "--short=12", "HEAD"]).unwrap_or_else(|| "unknown".into());
+    let short_sha =
+        git_output(&["rev-parse", "--short=12", "HEAD"]).unwrap_or_else(|| "unknown".into());
     let tag = git_output(&["describe", "--tags", "--exact-match"]).unwrap_or_default();
     let dirty = git_output(&["status", "--porcelain"]).is_some();
 

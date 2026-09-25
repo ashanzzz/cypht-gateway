@@ -33,7 +33,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     let service = GatewayService::new(auth, cypht, ids, store);
     let build = BuildInfo::current();
-    let app = router(ApiState { service, build: build.clone() });
+    let app = router(ApiState {
+        service,
+        build: build.clone(),
+    });
 
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     info!(
@@ -60,8 +63,13 @@ struct RuntimeConfig {
 
 impl RuntimeConfig {
     fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        let bind = env::var("GATEWAY_BIND").unwrap_or_else(|_| "0.0.0.0:8080".into()).parse()?;
-        let db_path = PathBuf::from(env::var("GATEWAY_DB_PATH").unwrap_or_else(|_| "/var/lib/cypht-gateway/gateway.db".into()));
+        let bind = env::var("GATEWAY_BIND")
+            .unwrap_or_else(|_| "0.0.0.0:8080".into())
+            .parse()?;
+        let db_path = PathBuf::from(
+            env::var("GATEWAY_DB_PATH")
+                .unwrap_or_else(|_| "/var/lib/cypht-gateway/gateway.db".into()),
+        );
         let master_key = required("GATEWAY_MASTER_KEY")?;
         let session_ttl_seconds = env::var("GATEWAY_SESSION_TTL_SECONDS")
             .unwrap_or_else(|_| "3600".into())

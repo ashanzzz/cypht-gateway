@@ -9,6 +9,6 @@ mod ids;
 mod models;
 
 pub use build_info::BuildInfo;
-pub use error::{GatewayError, GatewayResult};
-pub use ids::{ObjectIdCodec, ObjectKind};
+pub use error::{ApiErrorBody, ApiErrorDetail, GatewayError, GatewayResult};
+pub use ids::{DecodedObjectId, ObjectIdCodec, ObjectKind};
 pub use models::*;

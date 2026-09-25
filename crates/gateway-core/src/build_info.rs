@@ -20,10 +20,23 @@ impl BuildInfo {
             version: env!("CARGO_PKG_VERSION"),
             git_sha: env!("GATEWAY_GIT_SHA"),
             git_short_sha: env!("GATEWAY_GIT_SHORT_SHA"),
-            git_tag: (!tag.is_empty()).then_some(tag),
+            git_tag: (tag == concat!("v", env!("CARGO_PKG_VERSION"))).then_some(tag),
             git_dirty: env!("GATEWAY_GIT_DIRTY") == "true",
             build_time: (build_time != "unknown").then_some(build_time),
             api_version: "v1",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reported_tag_never_conflicts_with_product_version() {
+        let info = BuildInfo::current();
+        if let Some(tag) = info.git_tag {
+            assert_eq!(tag, format!("v{}", info.version));
         }
     }
 }
