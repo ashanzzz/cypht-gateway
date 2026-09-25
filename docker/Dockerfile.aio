@@ -13,8 +13,9 @@ COPY --from=builder /src/target/release/gatewayd /usr/local/bin/gatewayd
 COPY --from=builder /src/target/release/cyphtctl /usr/local/bin/cyphtctl
 COPY --from=builder /src/target/release/cypht-mcp /usr/local/bin/cypht-mcp
 
-# Copy Cypht gateway module and configuration
-COPY cypht-module/gateway /usr/local/share/cypht/modules/gateway
+# Copy Cypht gateway module, unified Nginx routing, and configuration
+COPY modules/gateway /usr/local/share/cypht/modules/gateway
+COPY docker/nginx-aio.conf /etc/nginx/nginx.conf
 COPY docker/cypht-gateway-config.php /usr/local/share/cypht/config/gateway.php
 COPY docker/cypht-gateway-entrypoint.sh /usr/local/bin/cypht-gateway-entrypoint.sh
 COPY docker/all-in-one-entrypoint.sh /usr/local/bin/all-in-one-entrypoint.sh
@@ -34,7 +35,7 @@ ENV USER_CONFIG_TYPE=custom:Gateway_User_Config_File \
     GATEWAY_BIND=0.0.0.0:18080 \
     GATEWAY_DATA_DIR=/var/lib/hm3/app_data/gateway \
     GATEWAY_DB_PATH=/var/lib/hm3/app_data/gateway/gateway.db \
-    CYPHT_BASE_URL=http://127.0.0.1:80/
+    CYPHT_BASE_URL=http://127.0.0.1:8089/
 
 VOLUME ["/var/lib/hm3/users", "/var/lib/hm3/attachments", "/var/lib/hm3/app_data"]
 EXPOSE 80 18080 8790

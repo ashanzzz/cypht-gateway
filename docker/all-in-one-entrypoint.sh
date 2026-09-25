@@ -46,7 +46,7 @@ fi
 export CYPHT_BRIDGE_KEY="$GATEWAY_BRIDGE_KEY"
 
 export USER_CONFIG_TYPE="${USER_CONFIG_TYPE:-custom:Gateway_User_Config_File}"
-export CYPHT_BASE_URL="${CYPHT_BASE_URL:-http://127.0.0.1:80/}"
+export CYPHT_BASE_URL="${CYPHT_BASE_URL:-http://127.0.0.1:8089/}"
 export GATEWAY_BIND="${GATEWAY_BIND:-0.0.0.0:18080}"
 export GATEWAY_DB_PATH="${GATEWAY_DB_PATH:-${GATEWAY_DATA_DIR}/gateway.db}"
 
