@@ -33,6 +33,7 @@ ci_tag = os.environ.get("GITHUB_REF_NAME") if os.environ.get("GITHUB_REF_TYPE") 
 if ci_tag and ci_tag != expected_tag:
     fail(f"GitHub tag {ci_tag!r} != expected {expected_tag!r}")
 if ci_tag:
+    subprocess.run(["git", "fetch", "--tags", "--force", "origin"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     try:
         tag_type = subprocess.check_output(
             ["git", "cat-file", "-t", f"refs/tags/{ci_tag}"],
