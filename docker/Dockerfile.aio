@@ -18,6 +18,7 @@ COPY modules/gateway /usr/local/share/cypht/modules/gateway
 COPY docker/nginx-aio.conf /etc/nginx/nginx.conf
 COPY docker/cypht-gateway-config.php /usr/local/share/cypht/config/gateway.php
 COPY docker/cypht-gateway-entrypoint.sh /usr/local/bin/cypht-gateway-entrypoint.sh
+COPY docker/gmail-proxy.php /usr/local/bin/gmail-proxy.php
 COPY docker/all-in-one-entrypoint.sh /usr/local/bin/all-in-one-entrypoint.sh
 COPY docker/supervisord-aio.conf /etc/supervisor/conf.d/supervisord-gateway.conf
 

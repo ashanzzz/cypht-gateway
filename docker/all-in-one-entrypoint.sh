@@ -51,6 +51,7 @@ export GATEWAY_BIND="${GATEWAY_BIND:-0.0.0.0:18080}"
 export GATEWAY_DB_PATH="${GATEWAY_DB_PATH:-${GATEWAY_DATA_DIR}/gateway.db}"
 
 # 2. Append gateway services to supervisord configuration if not present
+if [ -n "${HTTP_PROXY:-}${ALL_PROXY:-}" ] && ! grep -q 'imap.gmail.com' /etc/hosts; then echo '127.0.0.1 imap.gmail.com smtp.gmail.com' >> /etc/hosts; fi
 if ! grep -q "program:cypht-gateway" /etc/supervisord.conf; then
     printf '\n' >> /etc/supervisord.conf
     cat /etc/supervisor/conf.d/supervisord-gateway.conf >> /etc/supervisord.conf
