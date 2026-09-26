@@ -47,6 +47,34 @@ impl GatewayService {
         }
     }
 
+    pub async fn login_sso(
+        &self,
+        provided_key: &str,
+        username: String,
+        hm_id: String,
+        hm_session: String,
+    ) -> GatewayResult<LoginResponse> {
+        if provided_key != self.cypht.bridge_key() {
+            return Err(GatewayError::Authentication);
+        }
+        if username.trim().is_empty() || hm_id.is_empty() || hm_session.is_empty() {
+            return Err(GatewayError::InvalidRequest("invalid sso parameters".into()));
+        }
+        let session = CyphtSession { hm_id, hm_session };
+        self.cypht.ping(&session).await?;
+        let credential = Credential {
+            username: username.trim().to_string(),
+            password: String::new(),
+        };
+        let (token, ttl) = self.auth.issue_session(&credential, &session)?;
+        self.audit(&credential.username, None, "auth.sso", None, true, None);
+        Ok(LoginResponse {
+            access_token: token,
+            token_type: "Bearer".into(),
+            expires_in: ttl,
+        })
+    }
+
     pub async fn login(&self, username: String, password: String) -> GatewayResult<LoginResponse> {
         if username.trim().is_empty() || password.is_empty() {
             return Err(GatewayError::Authentication);

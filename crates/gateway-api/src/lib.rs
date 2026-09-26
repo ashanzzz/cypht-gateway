@@ -54,6 +54,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/healthz", get(health))
         .route("/api/v1/meta/version", get(version))
         .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/sso", post(sso))
         .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/me", get(me))
         .route("/api/v1/audit", get(audit))
@@ -134,6 +135,38 @@ async fn health(State(state): State<Arc<ApiState>>) -> Json<serde_json::Value> {
 
 async fn version(State(state): State<Arc<ApiState>>) -> Json<BuildInfo> {
     Json(state.build.clone())
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SsoRequest {
+    pub username: String,
+    pub hm_id: String,
+    pub hm_session: String,
+}
+
+async fn sso(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<SsoRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let bridge_key = headers
+        .get("x-cypht-gateway-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    Ok((
+        StatusCode::OK,
+        Json(
+            state
+                .service
+                .login_sso(
+                    bridge_key,
+                    request.username,
+                    request.hm_id,
+                    request.hm_session,
+                )
+                .await?,
+        ),
+    ))
 }
 
 async fn login(

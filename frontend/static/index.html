@@ -380,6 +380,12 @@ function setupScopePresets() {
     applyLanguage(currentLang === 'zh-CN' ? 'en-US' : 'zh-CN');
   };
 }
+const hashParams = new URLSearchParams(window.location.hash.slice(1));
+if (hashParams.has('token')) {
+  accessToken = hashParams.get('token');
+  sessionStorage.setItem('cyphtGatewayAccessToken', accessToken);
+  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch {}
+}
 let accessToken=sessionStorage.getItem('cyphtGatewayAccessToken')||'';
 let accounts=[],profiles=[],uploads=[],currentMessage=null,composeAction='send',composeIdempotencyKey=idem();
 let contactEditingId=null,canWriteContacts=false;

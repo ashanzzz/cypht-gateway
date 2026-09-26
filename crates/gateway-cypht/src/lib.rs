@@ -214,6 +214,10 @@ pub struct CyphtClient {
 }
 
 impl CyphtClient {
+    pub fn bridge_key(&self) -> &str {
+        &self.config.bridge_key
+    }
+
     pub fn new(config: CyphtConfig) -> GatewayResult<Self> {
         let http = Client::builder()
             .connect_timeout(Duration::from_secs(10))
