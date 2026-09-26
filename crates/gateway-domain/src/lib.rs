@@ -58,7 +58,9 @@ impl GatewayService {
             return Err(GatewayError::Authentication);
         }
         if username.trim().is_empty() || hm_id.is_empty() || hm_session.is_empty() {
-            return Err(GatewayError::InvalidRequest("invalid sso parameters".into()));
+            return Err(GatewayError::InvalidRequest(
+                "invalid sso parameters".into(),
+            ));
         }
         let session = CyphtSession { hm_id, hm_session };
         self.cypht.ping(&session).await?;
