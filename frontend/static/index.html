@@ -6,11 +6,17 @@
   <title>Cypht Gateway</title>
   <style>
     :root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color-scheme:light dark}body{margin:0;background:#111318;color:#e9edf3}main{max-width:1180px;margin:auto;padding:28px}section{background:#191d24;border:1px solid #303642;border-radius:12px;padding:20px;margin:16px 0}h1,h2,h3{margin-top:0}input,select,button,textarea{font:inherit;padding:9px 11px;border-radius:8px;border:1px solid #414957;background:#11151b;color:inherit}textarea{width:100%;min-height:170px;box-sizing:border-box}button{cursor:pointer;background:#293444}button.primary{background:#315eaa}button.danger{background:#7c3030}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grow{flex:1}.hidden{display:none!important}.muted{color:#9da8b8;font-size:.9rem}.error{white-space:pre-wrap;color:#ff9b9b}.ok{color:#86dfa5}.token{font-family:ui-monospace,monospace;word-break:break-all;padding:12px;background:#0e1116;border-radius:8px}.card{padding:12px;border:1px solid #303642;border-radius:9px;margin:8px 0}.mail{cursor:pointer}.mail:hover{border-color:#60708a}.subject{font-weight:650}.meta{font-size:.88rem;color:#aeb8c6;white-space:pre-wrap}.body{white-space:pre-wrap;max-height:480px;overflow:auto;background:#0e1116;padding:14px;border-radius:8px}pre.saved-search-preview{white-space:pre-wrap;overflow-wrap:anywhere;max-height:20rem;overflow:auto;margin:8px 0}label{display:flex;gap:6px;align-items:center}.scopes{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.compose-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.compose-grid .wide{grid-column:1/-1}.contact-field{display:flex;flex-direction:column;align-items:stretch;gap:6px}#contactsPanel button,#tagsPanel button{min-height:44px}.tag-swatch{width:16px;height:16px;border:1px solid #aeb8c6;border-radius:4px;display:inline-block}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}code{font-family:ui-monospace,monospace}:focus-visible{outline:3px solid #8ab4f8;outline-offset:2px}#savedSearchesPanel button{min-height:44px}@media(max-width:700px){main{padding:14px}.row>*{width:100%}.compose-grid{grid-template-columns:1fr}}
-  </style>
+  .btn-sm{padding:4px 10px;font-size:0.83rem;border-radius:6px;border:1px solid #414957;background:#232b36;color:inherit;cursor:pointer;transition:background .15s}
+.btn-sm:hover{background:#323e4f}
+.scope-cat{margin:12px 0 6px 0;font-size:0.92rem;font-weight:600;color:#8ab4f8;border-bottom:1px solid #28303d;padding-bottom:3px}
+</style>
 </head>
 <body>
 <main>
-  <h1>Cypht Gateway <span id="version" class="muted"></span></h1>
+  <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+    <h1 style="margin:0">Cypht Gateway <span id="version" class="muted"></span></h1>
+    <button type="button" id="langToggle" class="btn-sm" style="font-weight:600">🌐 English / 中文</button>
+  </div>
   <p class="muted">v0.4 管理台。REST、CLI、MCP 共用同一权限与审计层；浏览器不直接访问 Cypht Bridge。</p>
 
   <section id="loginPanel">
@@ -30,7 +36,18 @@
       <h2>API Tokens</h2>
       <form id="tokenForm">
         <div class="row"><input id="tokenName" class="grow" placeholder="名称，例如 Claude Read-only" required><input id="tokenDays" type="number" min="1" max="3650" value="365" placeholder="有效天数"></div>
-        <div class="scopes" id="scopeList"></div>
+        <div style="margin:12px 0 6px 0">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h3 style="margin:0;font-size:1.02rem" data-i18n="scopes_title">权限范围 (Scopes)</h3>
+            <div class="row" style="gap:6px">
+              <button type="button" id="scopePresetAll" class="btn-sm" style="background:#315eaa" data-i18n="scope_all">全部权限 (全选)</button>
+              <button type="button" id="scopePresetReadWrite" class="btn-sm" data-i18n="scope_rw">常用读写</button>
+              <button type="button" id="scopePresetAi" class="btn-sm" data-i18n="scope_ai">AI 助手推荐 (只读)</button>
+              <button type="button" id="scopePresetNone" class="btn-sm" data-i18n="scope_none">清空选择</button>
+            </div>
+          </div>
+        </div>
+        <div id="scopeList"></div>
         <h3>允许访问的邮箱</h3><div class="scopes" id="tokenAccountList"></div>
         <p class="muted">不选择邮箱表示允许当前用户全部邮箱。Token 只显示一次。</p><button class="primary">创建 Token</button>
       </form>
@@ -189,7 +206,180 @@
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-const scopes=['accounts.read','mail.read','mail.search','attachments.read','mail.send','mail.modify','mail.delete','tokens.manage','audit.read','contacts.read','contacts.write','tags.read','tags.write','searches.read','searches.write','calendar.read','calendar.write','sieve.read'];
+const scopeCategories = [
+  {
+    category: 'mail',
+    title_zh: '邮件与账户 (Mail & Accounts)',
+    title_en: 'Mail & Accounts',
+    scopes: [
+      { id: 'accounts.read', zh: '读取账户列表', en: 'Read accounts' },
+      { id: 'mail.read', zh: '读取邮件正文', en: 'Read email content' },
+      { id: 'mail.search', zh: '搜索邮件', en: 'Search emails' },
+      { id: 'attachments.read', zh: '下载邮件附件', en: 'Download attachments' },
+      { id: 'mail.send', zh: '发送邮件', en: 'Send emails' },
+      { id: 'mail.modify', zh: '标记/移动邮件', en: 'Modify/flag/move emails' },
+      { id: 'mail.delete', zh: '删除邮件', en: 'Delete emails' }
+    ]
+  },
+  {
+    category: 'contacts',
+    title_zh: '联系人 (Contacts)',
+    title_en: 'Contacts',
+    scopes: [
+      { id: 'contacts.read', zh: '查看联系人', en: 'Read contacts' },
+      { id: 'contacts.write', zh: '创建/编辑联系人', en: 'Write contacts' }
+    ]
+  },
+  {
+    category: 'tags',
+    title_zh: '标签管理 (Tags)',
+    title_en: 'Tags',
+    scopes: [
+      { id: 'tags.read', zh: '查看标签', en: 'Read tags' },
+      { id: 'tags.write', zh: '创建/编辑标签', en: 'Write tags' }
+    ]
+  },
+  {
+    category: 'searches',
+    title_zh: '保存的搜索 (Saved Searches)',
+    title_en: 'Saved Searches',
+    scopes: [
+      { id: 'searches.read', zh: '查看已存搜索', en: 'Read saved searches' },
+      { id: 'searches.write', zh: '管理已存搜索', en: 'Write saved searches' }
+    ]
+  },
+  {
+    category: 'calendar',
+    title_zh: '日历日程 (Calendar)',
+    title_en: 'Calendar',
+    scopes: [
+      { id: 'calendar.read', zh: '查看日历日程', en: 'Read calendar events' },
+      { id: 'calendar.write', zh: '创建/删除日程', en: 'Write calendar events' }
+    ]
+  },
+  {
+    category: 'feeds',
+    title_zh: 'RSS 订阅 (Feeds)',
+    title_en: 'Feeds',
+    scopes: [
+      { id: 'feeds.read', zh: '查看订阅源', en: 'Read feeds' },
+      { id: 'feeds.write', zh: '管理订阅源', en: 'Write feeds' }
+    ]
+  },
+  {
+    category: 'admin',
+    title_zh: '过滤与管理 (Admin & Sieve)',
+    title_en: 'Admin & Sieve',
+    scopes: [
+      { id: 'sieve.read', zh: '查看 Sieve 过滤状态', en: 'Read sieve status' },
+      { id: 'tokens.manage', zh: '管理 API Tokens', en: 'Manage API tokens' },
+      { id: 'audit.read', zh: '查看审计日志', en: 'Read audit logs' }
+    ]
+  }
+];
+
+const scopes = scopeCategories.flatMap(c => c.scopes.map(s => s.id));
+
+const T = {
+  'zh-CN': {
+    app_desc: 'v0.5 管理台。REST、CLI、MCP 共用同一权限与审计层；浏览器不直接访问 Cypht Bridge。',
+    scopes_title: '权限范围 (Scopes)',
+    scope_all: '全部权限 (全选)',
+    scope_rw: '常用读写',
+    scope_ai: 'AI 助手推荐 (只读)',
+    scope_none: '清空选择',
+    lang_btn: '🌐 English / 中文'
+  },
+  'en-US': {
+    app_desc: 'v0.5 Management Console. REST, CLI, and MCP share the same auth & audit layer. Browsers never talk directly to the Cypht Bridge.',
+    scopes_title: 'Permission Scopes',
+    scope_all: 'All Permissions (Select All)',
+    scope_rw: 'Full Read/Write',
+    scope_ai: 'AI Assistant (Read-only)',
+    scope_none: 'Clear All',
+    lang_btn: '🌐 中文 / English'
+  }
+};
+
+let currentLang = localStorage.getItem('cyphtGatewayLang') || (navigator.language && navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US');
+
+function t(key, fallback) {
+  return T[currentLang]?.[key] ?? fallback ?? key;
+}
+
+function applyLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('cyphtGatewayLang', lang);
+  document.documentElement.lang = lang;
+  const toggleBtn = $('langToggle');
+  if (toggleBtn) toggleBtn.textContent = lang === 'zh-CN' ? '🌐 English / 中文' : '🌐 中文 / English';
+  
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    if (T[currentLang]?.[k]) el.textContent = T[currentLang][k];
+  });
+  renderScopes();
+}
+
+function renderScopes() {
+  const container = $('scopeList');
+  if (!container) return;
+  const checked = new Set([...container.querySelectorAll('input:checked')].map(i => i.value));
+  clear(container);
+
+  scopeCategories.forEach(cat => {
+    const catTitle = document.createElement('div');
+    catTitle.className = 'scope-cat';
+    catTitle.textContent = currentLang === 'zh-CN' ? cat.title_zh : cat.title_en;
+    container.appendChild(catTitle);
+
+    const grid = document.createElement('div');
+    grid.className = 'scopes';
+    cat.scopes.forEach(s => {
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = s.id;
+      if (checked.size === 0) {
+        input.checked = ['accounts.read', 'mail.read', 'mail.search', 'attachments.read'].includes(s.id);
+      } else {
+        input.checked = checked.has(s.id);
+      }
+      const desc = currentLang === 'zh-CN' ? s.zh : s.en;
+      label.append(input, document.createTextNode(`${s.id} (${desc})`));
+      grid.appendChild(label);
+    });
+    container.appendChild(grid);
+  });
+}
+
+function setupScopePresets() {
+  const pAll = $('scopePresetAll'), pRw = $('scopePresetReadWrite'), pAi = $('scopePresetAi'), pNone = $('scopePresetNone'), lTog = $('langToggle');
+  if (pAll) pAll.onclick = () => {
+    $('scopeList').querySelectorAll('input[type="checkbox"]').forEach(i => i.checked = true);
+  };
+  if (pRw) pRw.onclick = () => {
+    const rw = [
+      'accounts.read', 'mail.read', 'mail.search', 'attachments.read', 'mail.send', 'mail.modify',
+      'contacts.read', 'contacts.write', 'tags.read', 'tags.write', 'searches.read', 'searches.write',
+      'calendar.read', 'calendar.write', 'feeds.read', 'feeds.write', 'sieve.read'
+    ];
+    $('scopeList').querySelectorAll('input[type="checkbox"]').forEach(i => i.checked = rw.includes(i.value));
+  };
+  if (pAi) pAi.onclick = () => {
+    const ai = [
+      'accounts.read', 'mail.read', 'mail.search', 'attachments.read',
+      'contacts.read', 'tags.read', 'searches.read', 'calendar.read', 'sieve.read'
+    ];
+    $('scopeList').querySelectorAll('input[type="checkbox"]').forEach(i => i.checked = ai.includes(i.value));
+  };
+  if (pNone) pNone.onclick = () => {
+    $('scopeList').querySelectorAll('input[type="checkbox"]').forEach(i => i.checked = false);
+  };
+  if (lTog) lTog.onclick = () => {
+    applyLanguage(currentLang === 'zh-CN' ? 'en-US' : 'zh-CN');
+  };
+}
 let accessToken=sessionStorage.getItem('cyphtGatewayAccessToken')||'';
 let accounts=[],profiles=[],uploads=[],currentMessage=null,composeAction='send',composeIdempotencyKey=idem();
 let contactEditingId=null,canWriteContacts=false;
@@ -203,7 +393,7 @@ async function raw(path,options={}){const headers={...(options.headers||{})};if(
 const setText=(el,v)=>el.textContent=v??'';const clear=el=>{while(el.firstChild)el.removeChild(el.firstChild)};function card(parent){const d=document.createElement('div');d.className='card';parent.appendChild(d);return d}function formatAddresses(v){return(v||[]).map(x=>x.name?`${x.name} <${x.email}>`:x.email).join(', ')}
 function splitAddresses(v){return v.split(',').map(x=>x.trim()).filter(Boolean).map(email=>({email}))}function idem(){return globalThis.crypto?.randomUUID?.()||`web-${Date.now()}-${Math.random().toString(16).slice(2)}`}
 
-async function bootstrap(){try{const v=await api('/api/v1/meta/version');setText($('version'),`v${v.version} · ${v.git_short_sha}`)}catch{}clear($('scopeList'));scopes.forEach(s=>{const l=document.createElement('label'),i=document.createElement('input');i.type='checkbox';i.value=s;i.checked=['accounts.read','mail.read','mail.search','attachments.read'].includes(s);l.append(i,document.createTextNode(s));$('scopeList').appendChild(l)});if(accessToken){try{await enterApp()}catch{accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken')}}}
+async function bootstrap(){try{const v=await api('/api/v1/meta/version');setText($('version'),`v${v.version} · ${v.git_short_sha}`)}catch{}renderScopes();setupScopePresets();applyLanguage(currentLang);if(accessToken){try{await enterApp()}catch{accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken')}}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();setText($('loginError'),'');try{const r=await api('/api/v1/auth/login',{method:'POST',body:JSON.stringify({username:$('username').value,password:$('password').value})});accessToken=r.access_token;sessionStorage.setItem('cyphtGatewayAccessToken',accessToken);$('password').value='';await enterApp()}catch(err){setText($('loginError'),err.message)}});
 $('logout').onclick=async()=>{try{await api('/api/v1/auth/logout',{method:'POST'})}catch{}accessToken='';sessionStorage.removeItem('cyphtGatewayAccessToken');$('app').classList.add('hidden');$('loginPanel').classList.remove('hidden')};
 async function enterApp(){const me=await api('/api/v1/me');$('loginPanel').classList.add('hidden');$('app').classList.remove('hidden');setText($('me'),`${me.username} · ${me.auth_kind} · ${me.scopes.join(', ')}`);canWriteContacts=me.auth_kind==='session'||me.scopes.includes('contacts.write');$('newContact').disabled=!canWriteContacts;canWriteTags=me.auth_kind==='session'||me.scopes.includes('tags.write');$('newTag').disabled=!canWriteTags;$('addMessageTag').disabled=!canWriteTags;$('removeMessageTag').disabled=!canWriteTags;canReadSavedSearches=me.auth_kind==='session'||me.scopes.includes('searches.read');$('newSavedSearch').disabled=!(me.auth_kind==='session'||me.scopes.includes('searches.write'));canWriteSavedSearches=!$('newSavedSearch').disabled;canReadCalendar=me.auth_kind==='session'||me.scopes.includes('calendar.read');canWriteCalendar=me.auth_kind==='session'||me.scopes.includes('calendar.write');$('newCalendarEvent').disabled=!canWriteCalendar;canReadFeeds=me.auth_kind==='session'||me.scopes.includes('feeds.read');await Promise.all([loadTokens(),loadAccounts(),loadProfiles(),loadInbox(),loadAudit(),loadContacts(),loadTags(),loadSavedSearches(),loadCalendar(),loadFeeds()])}
