@@ -577,19 +577,12 @@ impl GatewayService {
             if !self.account_allowed(principal, &public_id)? {
                 continue;
             }
-            match self
+            if let Ok(page) = self
                 .cypht
                 .messages(&session, &account.id, "INBOX", 0, fetch_limit)
                 .await
             {
-                Ok(page) => all.extend(page.messages),
-                Err(err) => {
-                    tracing::warn!(
-                        account_id = %account.id,
-                        error = %err,
-                        "unified inbox: skipped failing account"
-                    );
-                }
+                all.extend(page.messages);
             }
         }
         all.sort_by(|a, b| {
