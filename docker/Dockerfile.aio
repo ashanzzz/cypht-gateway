@@ -31,7 +31,8 @@ RUN chmod 0755 /usr/local/bin/all-in-one-entrypoint.sh \
     && printf 'auto_prepend_file=/usr/local/share/cypht/modules/gateway/bootstrap.php\n' \
        > /usr/local/etc/php/conf.d/cypht-gateway.ini \
     && sed -i "s/default-src 'none';/default-src 'none'; frame-src 'self';/g" /usr/local/share/cypht/modules/core/handler_modules.php \
-    && sed -i "/page: 'change_password'/a\\    },\\n\\    {\\n        page: 'gateway'" /usr/local/share/cypht/modules/core/navigation/routes.js
+    && sed -i "/page: 'change_password'/a\\    },\\n\\    {\\n        page: 'gateway',\\n        handler: 'applyGatewayPageHandlers'" /usr/local/share/cypht/modules/core/navigation/routes.js \
+    && (cd /usr/local/share/cypht && php scripts/config_gen.php)
 
 ENV USER_CONFIG_TYPE=custom:Gateway_User_Config_File \
     CYPHT_MODULES=core,contacts,local_contacts,feeds,imap,smtp,account,idle_timer,calendar,themes,nux,developer,history,saved_searches,advanced_search,highlights,profiles,inline_message,imap_folders,keyboard_shortcuts,tags,brute_force,sievefilters,api_login,gateway \

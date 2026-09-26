@@ -57,4 +57,13 @@ if ! grep -q "program:cypht-gateway" /etc/supervisord.conf; then
     cat /etc/supervisor/conf.d/supervisord-gateway.conf >> /etc/supervisord.conf
 fi
 
+# 3. Ensure native gateway route and compiled production JS are in place
+if ! grep -q "applyGatewayPageHandlers" /usr/local/share/cypht/modules/core/navigation/routes.js 2>/dev/null; then
+    sed -i "s/default-src 'none';/default-src 'none'; frame-src 'self';/g" /usr/local/share/cypht/modules/core/handler_modules.php || true
+    sed -i "/page: 'change_password'/a\\    },\\n\\    {\\n        page: 'gateway',\\n        handler: 'applyGatewayPageHandlers'" /usr/local/share/cypht/modules/core/navigation/routes.js || true
+fi
+if ! grep -q "Hm_Gateway" /usr/local/share/cypht/site/site.js 2>/dev/null; then
+    (cd /usr/local/share/cypht && php scripts/config_gen.php) || true
+fi
+
 exec /usr/local/bin/cypht-gateway-entrypoint.sh "$@"
