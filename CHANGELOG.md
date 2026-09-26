@@ -2,7 +2,20 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
-## Unreleased (v0.5 work in progress)
+## [0.5.2] - 2026-09-26 (Official Production Release)
+
+### Native Cypht Webmail Integration & UI Parity
+- **Official Upstream Merge**: PR #2110 merged into `cypht-org/cypht` master (visual icon parity across server and account headers).
+- **Zero-Iframe Native DOM UI**: Rewrote `Hm_Output_gateway_page_content` to render 100% native Bootstrap 5 DOM, completely eliminating iframe white flashes, double scrollbars, and CSP framing issues.
+- **Seamless Single Sign-On (SSO)**: Implemented `POST /api/v1/auth/sso` and `Hm_Handler_gateway_sso_data` for automatic loopback session exchange, allowing logged-in Cypht users to enter the Gateway console instantly without re-entering credentials.
+- **All 20 Permission Scopes & Presets**: Provided one-click scope preset buttons ("All Scopes / 全选", "Standard Read/Write", "AI Assistant", "Clear") with clear categorized bilingual descriptions.
+- **Client Lifecycle via `site.js`**: Structured client-side code into `modules/gateway/site.js` using Cypht's canonical `applyGatewayPageHandlers()` lifecycle, integrating smoothly with the SPA router.
+- **Self-Healing Container Build**: Automated `php scripts/config_gen.php` compilation in `Dockerfile.aio` and `all-in-one-entrypoint.sh` to produce fresh production `site.js` with cache busting on every startup.
+
+### REST API, MCP & Resilience
+- **Resilient Unified Inbox**: Replaced hard-failing iteration in `messages()` with graceful per-account handling, ensuring that temporary provider connectivity issues do not block other healthy mail accounts.
+- **Streamable HTTP MCP Server**: Validated `/mcp` endpoint against Model Context Protocol (2024-11-05 specification) with Bearer token authentication and default read-only safety policy.
+- **Opaque v2 Resource IDs**: Enforced HMAC-SHA256 owner-, type-, and source-bound opaque IDs across all entities.
 
 - Added read-only RSS/Atom feed subscriptions metadata through the Bridge, REST, CLI, MCP, and management UI. Article fetching and feed mutations remain deferred for SSRF and network egress protection.
 - Added redacted per-account Sieve status across the Bridge, REST, CLI, MCP, and UI. Sieve scripts, filters, credentials, remote probing, and writes remain deferred.

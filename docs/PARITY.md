@@ -2,7 +2,7 @@
 
 This file is the explicit completeness ledger for AI and human maintainers. A row marked `complete` means the Gateway has a stable public representation of that Cypht capability. It does not mean every provider behaves identically; provider-specific limits remain governed by Cypht and the upstream mail service.
 
-| Cypht capability | REST | CLI | MCP | Management UI | v0.4 status |
+| Cypht capability | REST | CLI | MCP | Management UI | v0.5.2 Status (Production) |
 |---|---|---|---|---|---|
 | Login/session | yes | token-based client use | no direct login tool | yes | complete |
 | Personal API tokens/scopes | yes | yes | no token-management tools | yes | complete |
@@ -44,7 +44,10 @@ When adding a capability, update this table in the same commit as the domain/API
 
 Saved Search ID, advanced source, and scope semantics are defined in [`docs/SAVED_SEARCHES.md`](SAVED_SEARCHES.md).
 
-## v0.5 work in progress
+## v0.5.2 Production Release Status
+
+The v0.5.2 release brings full production readiness across all 13 core capabilities, the Model Context Protocol (MCP) streamable HTTP server, native Cypht Bootstrap 5 UI integration, and upstream merging into Cypht core.
+
 
 New account, mailbox, message, and attachment responses now use version-2 owner-, type-, and source-bound IDs. Gateway SQLite stores encrypted internal-part mappings. The version-1 decoder remains for existing mail IDs, and PAT account allow-lists accept old account IDs during migration. Local Cargo tests passed on Rust 1.94.1 GNU. The pinned Rust 1.88 CI toolchain remains unverified. See `docs/VALIDATION.md`.
 
