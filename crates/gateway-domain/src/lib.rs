@@ -9,9 +9,9 @@ mod sieve;
 mod tags;
 
 use gateway_auth::{
-    AuthKind, AuthService, Credential, Principal, SCOPE_ACCOUNTS_READ, SCOPE_ATTACHMENTS_READ,
-    SCOPE_AUDIT_READ, SCOPE_CONTACTS_READ, SCOPE_CONTACTS_WRITE, SCOPE_MAIL_DELETE,
-    SCOPE_MAIL_MODIFY, SCOPE_MAIL_READ, SCOPE_MAIL_SEARCH, SCOPE_MAIL_SEND,
+    AuthKind, AuthService, Credential, CyphtSession, Principal, SCOPE_ACCOUNTS_READ,
+    SCOPE_ATTACHMENTS_READ, SCOPE_AUDIT_READ, SCOPE_CONTACTS_READ, SCOPE_CONTACTS_WRITE,
+    SCOPE_MAIL_DELETE, SCOPE_MAIL_MODIFY, SCOPE_MAIL_READ, SCOPE_MAIL_SEARCH, SCOPE_MAIL_SEND,
 };
 use gateway_core::{
     Account, ActionResult, Address, Attachment, AttachmentDownload, AuditPage, Contact,
