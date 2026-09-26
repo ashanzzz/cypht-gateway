@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "cypht-mcp"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "axum",
  "clap",
@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "cyphtctl"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "clap",
  "gateway-core",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-api"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "axum",
  "gateway-auth",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-auth"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "base64 0.22.1",
  "chacha20poly1305",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-core"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "base64 0.22.1",
  "hmac",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-cypht"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "gateway-auth",
  "gateway-core",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-domain"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "chrono",
  "gateway-auth",
@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-mcp"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "gateway-storage"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "gateway-core",
  "rusqlite",
@@ -698,7 +698,7 @@ dependencies = [
 
 [[package]]
 name = "gatewayd"
-version = "0.4.0"
+version = "0.5.2"
 dependencies = [
  "axum",
  "gateway-api",
