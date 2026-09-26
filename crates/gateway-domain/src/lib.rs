@@ -63,7 +63,6 @@ impl GatewayService {
             ));
         }
         let session = CyphtSession { hm_id, hm_session };
-        self.cypht.ping(&session).await?;
         let credential = Credential {
             username: username.trim().to_string(),
             password: String::new(),
