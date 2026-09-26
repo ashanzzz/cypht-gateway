@@ -208,6 +208,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
+          pattern: '*64'
           path: release-assets
           merge-multiple: true
       - name: Package source, bridge and contracts
