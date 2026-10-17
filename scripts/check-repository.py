@@ -43,6 +43,7 @@ required = [
     "docker/cypht-gateway-config.php",
     "tests/bridge_contract.php",
     "tests/bridge_ping.php",
+    "tests/bridge_capabilities.php",
     "tests/cypht_api_login_config.php",
     "tests/cypht_user_config_persistence.php",
     "tests/cypht_contacts_repo.php",
@@ -128,14 +129,25 @@ if bridge_php_path.is_file():
             + ", ".join(sorted(missing_bridge_caps))
         )
 
-# Mirror drift check between cypht-module/gateway and modules/gateway
-for source in (ROOT / "cypht-module/gateway").glob("*.php"):
-    mirror = ROOT / "modules/gateway" / source.name
-    if not mirror.is_file():
-        errors.append(f"missing mirrored Gateway module: {mirror.relative_to(ROOT)}")
-        continue
-    if source.read_bytes() != mirror.read_bytes():
-        errors.append(f"Gateway PHP mirror drift: {source.name}")
+# Bidirectional zero-drift check between cypht-module/gateway and modules/gateway
+canonical_dir = ROOT / "cypht-module/gateway"
+mirror_dir = ROOT / "modules/gateway"
+
+canonical = {p.name: p for p in canonical_dir.glob("*.php")}
+mirror = {p.name: p for p in mirror_dir.glob("*.php")}
+
+missing = canonical.keys() - mirror.keys()
+extra = mirror.keys() - canonical.keys()
+
+for name in sorted(missing):
+    errors.append(f"missing mirrored Gateway module: modules/gateway/{name}")
+
+for name in sorted(extra):
+    errors.append(f"unexpected mirrored Gateway module: modules/gateway/{name}")
+
+for name in sorted(canonical.keys() & mirror.keys()):
+    if canonical[name].read_bytes() != mirror[name].read_bytes():
+        errors.append(f"Gateway PHP mirror drift: {name}")
 cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
 members = re.findall(r'^\s*"([^"]+)",?\s*$', cargo, re.M)
 for member in members:

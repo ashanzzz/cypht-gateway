@@ -36,6 +36,7 @@ jobs:
       - name: Cypht 2.12.0 Bridge and repository tests
         run: |
           php tests/bridge_contract.php
+          php tests/bridge_capabilities.php
           php tests/bridge_persistence_guard.php
           curl --fail --location --retry 3 https://codeload.github.com/cypht-org/cypht/zip/refs/tags/v2.12.0 -o /tmp/cypht-v2.12.0.zip
           echo "44cf3a67438ed1d0921dbc1cab58a6939b1a09667156984ca193dbce57a24605  /tmp/cypht-v2.12.0.zip" | sha256sum -c -

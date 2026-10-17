@@ -22,6 +22,10 @@ All notable changes to this project will be documented here. The project follows
 
 ### Engineering Discipline & Repository Invariants
 - **Codified Engineering Discipline in AGENTS.md**: Enforced strict rules governing language boundaries, preservation of domain semantics over visual shape, capability contract requirements, evidence-based status claims, and antagonist review steps.
+- **Bidirectional PHP Mirror Guard**: Upgraded `scripts/check-repository.py` to perform bidirectional set comparison between `cypht-module/gateway` and `modules/gateway`, catching unexpected extra files as well as missing ones.
+- **Behavioral Capability Test Suite**: Added `tests/bridge_capabilities.php` to mechanically test both module-present and module-missing capability advertisement behavior.
+- **Atomic Image Promotion Architecture**: Added a dedicated `promote` job to `.github/workflows/image.yml` that only updates mutable `edge`, SemVer, and `latest` tags after all three images (gateway, cypht-with-bridge, cypht-aio) build and push their immutable SHA tags successfully.
+- **Clarified OAuth Invariants in AGENTS.md**: Disambiguated provider mailbox OAuth flows (owned by Cypht) from Gateway-native OAuth authorization server features (owned by Rust control plane).
 - **Automated Capability Producer-Consumer Checker**: Enhanced `scripts/check-repository.py` to mechanically verify that every capability constant consumed by Rust is advertised by the PHP Bridge, preventing broken capability contracts.
 - **PHP Mirror Drift Guard**: Added automated zero-drift verification in `scripts/check-repository.py` between `cypht-module/gateway` and `modules/gateway`.
 - **Feeds Capability Advertising**: Dynamically advertised `feeds.read.v1` in PHP `Hm_Handler_gateway_ping` when the Cypht `feeds` module is supported.

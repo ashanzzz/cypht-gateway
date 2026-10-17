@@ -4,7 +4,7 @@ This repository is designed to be maintained primarily by AI coding agents. Trea
 
 ## Product invariants
 
-1. **Cypht remains the mail protocol engine.** Do not reimplement IMAP/JMAP/EWS/SMTP or OAuth in Rust unless a future architecture decision explicitly replaces this rule.
+1. **Cypht remains the mail protocol engine.** Do not reimplement IMAP/JMAP/EWS/SMTP or provider-specific mailbox OAuth flows/token semantics in Rust unless an architecture decision explicitly replaces this rule. Gateway-native OAuth authorization-server functionality belongs to the Rust control plane.
 2. **The PHP bridge is private.** Public clients never call `cypht-module/gateway` directly. Bridge requests require an authenticated Cypht session and `X-Cypht-Gateway-Key`.
 3. **REST v1 is the canonical public contract.** CLI and the management UI map to that contract; MCP calls REST so it cannot bypass authentication, policy, idempotency or audit. Do not create provider logic in surface crates.
 4. **Never expose provider credentials.** Passwords, OAuth access/refresh tokens, Cypht config encryption material and raw PATs must never appear in API responses, logs or audit records.
@@ -24,7 +24,7 @@ This repository is designed to be maintained primarily by AI coding agents. Trea
 18. **Tag mutations are account-scoped.** Cypht 2.12.0 removes matching message UIDs across all accounts. Public Tag removal must match account, folder, and UID. Never invent a destination UID when MOVE omits COPYUID. Deny account-restricted PATs for global Tags.
 19. **User-config mutations must be durable.** Cypht Contacts and Tags repository calls can update only the active session. Do not report a successful write until a persistent save and fresh-session readback verify it. Detect stale state before mutation. Treat failed or lost Bridge responses as uncertain outcomes and never blindly replay creates or destructive writes.
 20. **Saved Searches are user-wide settings.** Deny account-restricted PATs before reading or writing them. Map Cypht advanced-search account/folder strings to opaque Gateway IDs. Persist encrypted owner-bound ID mappings. Never audit search names or query data. Keep `searches.read` out of default AI scopes. Reject rename collisions and retire deleted IDs.
-21. **Calendar is a limited Cypht 2.12.0 adapter.** Expose only the user-level calendar_events model, RFC3339 range reads, create, and confirmed unique delete. Do not expose update, all-day, end time, location, invitations, or complex recurrence until Cypht provides stable primitives.
+21. **Calendar adapter is a limited user-calendar capability.** Expose only the user-level calendar_events model, RFC3339 range reads, create, and confirmed unique delete. Do not expose update, all-day, end time, location, invitations, or complex recurrence until Cypht provides stable primitives.
 
 ## Engineering decision discipline
 
