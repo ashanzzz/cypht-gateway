@@ -5,6 +5,7 @@ use reqwest::{
     Client, StatusCode,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use url::Url;
 
@@ -185,15 +186,21 @@ pub struct BridgeDownload {
     pub content_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BridgePing {
     pub status: String,
     pub bridge_version: String,
+    #[serde(default = "default_bridge_api_version")]
+    pub bridge_api_version: u32,
     pub cypht_version: String,
     #[serde(default)]
     pub durable_user_config: bool,
     #[serde(default)]
     pub capabilities: Vec<String>,
+}
+
+fn default_bridge_api_version() -> u32 {
+    1
 }
 
 impl BridgePing {
@@ -219,6 +226,7 @@ struct BridgeEnvelope<T> {
 pub struct CyphtClient {
     http: Client,
     config: CyphtConfig,
+    cached_ping: Arc<RwLock<Option<BridgePing>>>,
 }
 
 impl CyphtClient {
@@ -233,7 +241,11 @@ impl CyphtClient {
             .user_agent(concat!("cypht-gateway/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| GatewayError::Configuration(format!("build HTTP client: {e}")))?;
-        Ok(Self { http, config })
+        Ok(Self {
+            http,
+            config,
+            cached_ping: Arc::new(RwLock::new(None)),
+        })
     }
 
     pub async fn login(&self, credential: &Credential) -> GatewayResult<CyphtSession> {
@@ -279,11 +291,26 @@ impl CyphtClient {
     pub async fn bridge_ping(&self, session: &CyphtSession) -> GatewayResult<BridgePing> {
         let ping: BridgePing = self.bridge_get(session, "ajax_gateway_ping", &[]).await?;
         validate_ping_versions(&ping)?;
+        if let Ok(mut lock) = self.cached_ping.write() {
+            *lock = Some(ping.clone());
+        }
         Ok(ping)
     }
 
-    pub async fn require_capability(&self, session: &CyphtSession, capability: &str) -> GatewayResult<()> {
-        let ping = self.bridge_ping(session).await?;
+    pub async fn require_capability(
+        &self,
+        session: &CyphtSession,
+        capability: &str,
+    ) -> GatewayResult<()> {
+        let cached = self
+            .cached_ping
+            .read()
+            .map_err(|_| GatewayError::Internal("lock poisoned".into()))?
+            .clone();
+        let ping = match cached {
+            Some(p) => p,
+            None => self.bridge_ping(session).await?,
+        };
         if !ping.supports(capability) {
             return Err(GatewayError::CapabilityUnavailable(capability.to_string()));
         }

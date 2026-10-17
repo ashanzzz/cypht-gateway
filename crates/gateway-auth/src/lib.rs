@@ -91,7 +91,9 @@ pub struct Principal {
 
 impl Principal {
     pub fn requires(&self, scope: &str) -> GatewayResult<()> {
-        if matches!(&self.auth_kind, AuthKind::Session | AuthKind::SsoSession) || self.scopes.iter().any(|s| s == scope) {
+        if matches!(&self.auth_kind, AuthKind::Session | AuthKind::SsoSession)
+            || self.scopes.iter().any(|s| s == scope)
+        {
             Ok(())
         } else {
             Err(GatewayError::PermissionDenied(scope.to_string()))
@@ -138,7 +140,7 @@ impl Vault {
 
     pub fn seal_json<T: Serialize>(&self, value: &T) -> GatewayResult<Vec<u8>> {
         let plaintext = Zeroizing::new(
-            serde_json::to_vec(value).map_err(|e| GatewayError::Internal(e.to_string()))?
+            serde_json::to_vec(value).map_err(|e| GatewayError::Internal(e.to_string()))?,
         );
         let mut nonce = [0_u8; 24];
         OsRng.fill_bytes(&mut nonce);
@@ -157,10 +159,9 @@ impl Vault {
         }
         let (nonce, ciphertext) = value.split_at(24);
         let plaintext = Zeroizing::new(
-            self
-                .cipher
+            self.cipher
                 .decrypt(XNonce::from_slice(nonce), ciphertext)
-                .map_err(|_| GatewayError::Crypto)?
+                .map_err(|_| GatewayError::Crypto)?,
         );
         serde_json::from_slice(&plaintext).map_err(|_| GatewayError::Crypto)
     }
@@ -270,7 +271,9 @@ impl AuthService {
         account_allowlist: Vec<String>,
         expires_in_days: Option<u32>,
     ) -> GatewayResult<CreatedToken> {
-        if matches!(principal.auth_kind, AuthKind::SsoSession) || principal.credential.password.is_empty() {
+        if matches!(principal.auth_kind, AuthKind::SsoSession)
+            || principal.credential.password.is_empty()
+        {
             return Err(GatewayError::Forbidden(
                 "creating a PAT from an SSO session requires re-authentication".into(),
             ));
@@ -647,7 +650,13 @@ mod tests {
             },
         };
         assert!(matches!(
-            auth.create_pat(&sso_user, "sso-token", vec![SCOPE_MAIL_READ.into()], Vec::new(), None),
+            auth.create_pat(
+                &sso_user,
+                "sso-token",
+                vec![SCOPE_MAIL_READ.into()],
+                Vec::new(),
+                None
+            ),
             Err(GatewayError::Forbidden(_))
         ));
     }
