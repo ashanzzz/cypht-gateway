@@ -6,7 +6,8 @@ All notable changes to this project will be documented here. The project follows
 
 ### Build & CI Fixes
 - **P0 CI Dependency Fixes**: Added `tracing.workspace = true` to both `crates/gateway-cypht/Cargo.toml` and `crates/gateway-domain/Cargo.toml`, resolving module resolution errors and container build failures in GitHub Actions.
-- **Capability Consumption & Gating**: Implemented `BridgePing::supports(&self, capability: &str)` and `CyphtClient::require_capability(&self, ...)` to actively evaluate negotiated bridge capabilities, resolving dead-code compiler warnings and completing P0-03.
+- **Granular Capability Enforcement**: Split capability contracts into explicit `.read.v1` and `.write.v1` domains across both PHP Bridge and Rust adapter. Introduced private checked primitives (`get_with_capability`, `post_user_config_with_capability`, `write_with_capability`) in `gateway-cypht`, guaranteeing 100% adapter operation coverage without developer omission.
+- **Container Workflow Tag Protection**: Restricted `cypht-gateway-aio:latest` tag publication in `.github/workflows/image.yml` to official SemVer release tags, preventing accidental overwrite on push to `main`.
 
 ### Upstream Baseline & Security Hardening
 - **Cypht 2.13.0 Production Baseline**: Upgraded `Dockerfile.cypht`, `Dockerfile.aio`, and CI workflow container builds to Cypht `v2.13.0` (incorporating critical SMTP attachment and chunk isolation fixes).

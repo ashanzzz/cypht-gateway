@@ -191,10 +191,14 @@ pub const SUPPORTED_BRIDGE_API_VERSION: u32 = 1;
 pub const CAP_MAIL_READ: &str = "mail.read.v1";
 pub const CAP_MAIL_WRITE: &str = "mail.write.v1";
 pub const CAP_ACCOUNTS_READ: &str = "accounts.read.v1";
-pub const CAP_CONTACTS: &str = "contacts.v1";
-pub const CAP_TAGS: &str = "tags.v1";
-pub const CAP_CALENDAR: &str = "calendar.v1";
-pub const CAP_SAVED_SEARCHES: &str = "saved_searches.v1";
+pub const CAP_CONTACTS_READ: &str = "contacts.read.v1";
+pub const CAP_CONTACTS_WRITE: &str = "contacts.write.v1";
+pub const CAP_TAGS_READ: &str = "tags.read.v1";
+pub const CAP_TAGS_WRITE: &str = "tags.write.v1";
+pub const CAP_CALENDAR_READ: &str = "calendar.read.v1";
+pub const CAP_CALENDAR_WRITE: &str = "calendar.write.v1";
+pub const CAP_SAVED_SEARCHES_READ: &str = "saved_searches.read.v1";
+pub const CAP_SAVED_SEARCHES_WRITE: &str = "saved_searches.write.v1";
 pub const CAP_SIEVE_READ: &str = "sieve.read.v1";
 pub const CAP_USER_CONFIG_DURABLE: &str = "user_config.durable.v1";
 
@@ -324,13 +328,49 @@ impl CyphtClient {
         Ok(())
     }
 
+    async fn get_with_capability<T: DeserializeOwned>(
+        &self,
+        session: &CyphtSession,
+        capability: &'static str,
+        page: &str,
+        params: &[(&str, &str)],
+    ) -> GatewayResult<T> {
+        self.require_capability(session, capability).await?;
+        self.bridge_get(session, page, params).await
+    }
+
+    async fn post_user_config_with_capability<T: DeserializeOwned>(
+        &self,
+        session: &CyphtSession,
+        credential: &Credential,
+        capability: &'static str,
+        page: &str,
+        payload: &serde_json::Value,
+    ) -> GatewayResult<T> {
+        self.require_capability(session, capability).await?;
+        self.bridge_post_with_config_key(session, Some(credential), true, page, payload)
+            .await
+    }
+
+    async fn write_with_capability<T: DeserializeOwned>(
+        &self,
+        session: &CyphtSession,
+        capability: &'static str,
+        page: &str,
+        payload: &serde_json::Value,
+    ) -> GatewayResult<T> {
+        self.require_capability(session, capability).await?;
+        self.bridge_write(session, page, payload).await
+    }
+
     pub async fn accounts(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeAccount>> {
-        self.require_capability(session, CAP_ACCOUNTS_READ).await?;
-        self.bridge_get(session, "ajax_gateway_accounts", &[]).await
+        self.get_with_capability(session, CAP_ACCOUNTS_READ, "ajax_gateway_accounts", &[])
+            .await
     }
 
     pub async fn profiles(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeProfile>> {
-        self.bridge_get(session, "ajax_gateway_profiles", &[]).await
+        self.get_with_capability(session, CAP_ACCOUNTS_READ, "ajax_gateway_profiles", &[])
+            .await
     }
 
     pub async fn contacts(
@@ -338,18 +378,21 @@ impl CyphtClient {
         session: &CyphtSession,
         query: Option<&str>,
     ) -> GatewayResult<Vec<BridgeContact>> {
-        self.require_capability(session, CAP_CONTACTS).await?;
         let params = query
             .map(|value| vec![("query", value)])
             .unwrap_or_default();
-        self.bridge_get(session, "ajax_gateway_contacts", &params)
+        self.get_with_capability(session, CAP_CONTACTS_READ, "ajax_gateway_contacts", &params)
             .await
     }
 
     pub async fn contact(&self, session: &CyphtSession, id: &str) -> GatewayResult<BridgeContact> {
-        self.require_capability(session, CAP_CONTACTS).await?;
-        self.bridge_get(session, "ajax_gateway_contact", &[("contact_id", id)])
-            .await
+        self.get_with_capability(
+            session,
+            CAP_CONTACTS_READ,
+            "ajax_gateway_contact",
+            &[("contact_id", id)],
+        )
+        .await
     }
 
     pub async fn create_contact(
@@ -374,10 +417,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeContact> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_CONTACTS_WRITE,
             "ajax_gateway_contact_update",
             payload,
         )
@@ -400,8 +443,8 @@ impl CyphtClient {
         .await
     }
     pub async fn tags(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeTag>> {
-        self.require_capability(session, CAP_TAGS).await?;
-        self.bridge_get(session, "ajax_gateway_tags", &[]).await
+        self.get_with_capability(session, CAP_TAGS_READ, "ajax_gateway_tags", &[])
+            .await
     }
 
     pub async fn create_tag(
@@ -426,10 +469,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeTag> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_TAGS_WRITE,
             "ajax_gateway_tag_update",
             payload,
         )
@@ -483,10 +526,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeCalendarEvent> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_CALENDAR_WRITE,
             "ajax_gateway_calendar_create",
             payload,
         )
@@ -546,10 +589,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeSavedSearch> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_SAVED_SEARCHES_WRITE,
             "ajax_gateway_saved_search_update",
             payload,
         )
@@ -607,8 +650,9 @@ impl CyphtClient {
         session: &CyphtSession,
         account_id: &str,
     ) -> GatewayResult<Vec<BridgeMailbox>> {
-        self.bridge_get(
+        self.get_with_capability(
             session,
+            CAP_ACCOUNTS_READ,
             "ajax_gateway_mailboxes",
             &[("account_id", account_id)],
         )
@@ -1038,7 +1082,12 @@ mod tests {
             bridge_api_version: SUPPORTED_BRIDGE_API_VERSION,
             cypht_version: CYPHT_BASELINE_VERSION.into(),
             durable_user_config: true,
-            capabilities: vec!["mail.read.v1".into(), "user_config.durable.v1".into()],
+            capabilities: vec![
+                "mail.read.v1".into(),
+                "user_config.durable.v1".into(),
+                "contacts.read.v1".into(),
+                "contacts.write.v1".into(),
+            ],
         };
         assert!(ping.supports("mail.read.v1"));
         assert!(ping.supports("user_config.durable.v1"));

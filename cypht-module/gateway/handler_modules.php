@@ -101,10 +101,10 @@ class Hm_Handler_gateway_ping extends Hm_Handler_Module {
             'mail.read.v1',
             'mail.write.v1',
             'accounts.read.v1',
-            'tags.v1',
-            'contacts.v1',
-            'calendar.v1',
-            'saved_searches.v1',
+            'contacts.read.v1',
+            'tags.read.v1',
+            'calendar.read.v1',
+            'saved_searches.read.v1',
             'sieve.read.v1'
         );
         $durable = isset($this->user_config) && is_object($this->user_config) &&
@@ -112,6 +112,10 @@ class Hm_Handler_gateway_ping extends Hm_Handler_Module {
             $this->user_config->gateway_storage_is_safe() === true;
         if ($durable) {
             $capabilities[] = 'user_config.durable.v1';
+            $capabilities[] = 'contacts.write.v1';
+            $capabilities[] = 'tags.write.v1';
+            $capabilities[] = 'calendar.write.v1';
+            $capabilities[] = 'saved_searches.write.v1';
         }
         gateway_json_ok(array(
             'status' => 'ok',
