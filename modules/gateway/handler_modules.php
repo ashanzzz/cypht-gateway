@@ -59,7 +59,15 @@ class Hm_Handler_gateway_sso_data extends Hm_Handler_Module {
                 )
             );
             $context = @stream_context_create($opts);
-            $res = @file_get_contents('http://127.0.0.1:18080/api/v1/auth/sso', false, $context);
+            $gateway_internal = getenv('GATEWAY_INTERNAL_URL');
+            if (!$gateway_internal && function_exists('env')) {
+                $gateway_internal = env('GATEWAY_INTERNAL_URL', '');
+            }
+            if (!$gateway_internal) {
+                $gateway_internal = 'http://127.0.0.1:18080';
+            }
+            $sso_endpoint = rtrim($gateway_internal, '/').'/api/v1/auth/sso';
+            $res = @file_get_contents($sso_endpoint, false, $context);
             if ($res) {
                 $data = @json_decode($res, true);
                 if (!empty($data['access_token'])) {
@@ -89,13 +97,29 @@ class Hm_Handler_gateway_guard extends Hm_Handler_Module {
 
 class Hm_Handler_gateway_ping extends Hm_Handler_Module {
     public function process() {
+        $capabilities = array(
+            'mail.read.v1',
+            'mail.write.v1',
+            'accounts.read.v1',
+            'tags.v1',
+            'contacts.v1',
+            'calendar.v1',
+            'saved_searches.v1',
+            'sieve.read.v1'
+        );
+        $durable = isset($this->user_config) && is_object($this->user_config) &&
+            method_exists($this->user_config, 'gateway_storage_is_safe') &&
+            $this->user_config->gateway_storage_is_safe() === true;
+        if ($durable) {
+            $capabilities[] = 'user_config.durable.v1';
+        }
         gateway_json_ok(array(
             'status' => 'ok',
             'bridge_version' => gateway_bridge_version(),
+            'bridge_api_version' => 1,
             'cypht_version' => defined('CYPHT_VERSION') ? (string)CYPHT_VERSION : 'unknown',
-            'durable_user_config' => isset($this->user_config) && is_object($this->user_config) &&
-                method_exists($this->user_config, 'gateway_storage_is_safe') &&
-                $this->user_config->gateway_storage_is_safe() === true
+            'durable_user_config' => $durable,
+            'capabilities' => $capabilities
         ));
     }
 }

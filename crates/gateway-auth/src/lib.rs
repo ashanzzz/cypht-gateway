@@ -41,16 +41,34 @@ pub const DEFAULT_AI_SCOPES: &[&str] = &[
     SCOPE_CONTACTS_READ,
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Credential {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+impl std::fmt::Debug for Credential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credential")
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct CyphtSession {
     pub hm_id: String,
     pub hm_session: String,
+}
+
+impl std::fmt::Debug for CyphtSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CyphtSession")
+            .field("hm_id", &"[REDACTED]")
+            .field("hm_session", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]

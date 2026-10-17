@@ -247,7 +247,7 @@ impl Store {
     pub fn touch_pat(&self, id: &str, now: i64) -> GatewayResult<()> {
         let conn = self.conn.lock().map_err(lock_err)?;
         conn.execute(
-            "UPDATE gateway_pats SET last_used_at=?1 WHERE id=?2",
+            "UPDATE gateway_pats SET last_used_at=?1 WHERE id=?2 AND (last_used_at IS NULL OR last_used_at < ?1 - 60)",
             params![now, id],
         )
         .map_err(storage_err)?;

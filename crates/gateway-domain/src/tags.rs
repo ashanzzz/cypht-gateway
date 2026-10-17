@@ -38,7 +38,7 @@ impl GatewayService {
             "tags.create",
             result.as_ref().ok().map(|tag| tag.id.as_str()),
             result.is_ok(),
-        )?;
+        );
         result
     }
 
@@ -49,7 +49,7 @@ impl GatewayService {
         request: TagUpdateRequest,
     ) -> GatewayResult<Tag> {
         let result = self.update_tag_inner(principal, id, request).await;
-        self.audit_write(principal, "tags.update", Some(id), result.is_ok())?;
+        self.audit_write(principal, "tags.update", Some(id), result.is_ok());
         result
     }
 
@@ -60,7 +60,7 @@ impl GatewayService {
         confirm: bool,
     ) -> GatewayResult<()> {
         let result = self.delete_tag_inner(principal, id, confirm).await;
-        self.audit_write(principal, "tags.delete", Some(id), result.is_ok())?;
+        self.audit_write(principal, "tags.delete", Some(id), result.is_ok());
         result
     }
 
@@ -73,7 +73,7 @@ impl GatewayService {
         let result = self
             .message_tag_inner(principal, message_id, tag_id, false, true)
             .await;
-        self.audit_write(principal, "mail.tag.add", Some(message_id), result.is_ok())?;
+        self.audit_write(principal, "mail.tag.add", Some(message_id), result.is_ok());
         result
     }
 
@@ -92,7 +92,7 @@ impl GatewayService {
             "mail.tag.remove",
             Some(message_id),
             result.is_ok(),
-        )?;
+        );
         result
     }
 

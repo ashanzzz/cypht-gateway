@@ -4,13 +4,21 @@ All notable changes to this project will be documented here. The project follows
 
 ## [Unreleased] - 2026-10-17
 
-### Security & Architecture Hardening
+### Build & CI Fixes
+- **P0 CI Dependency Fix**: Added `tracing.workspace = true` to `crates/gateway-cypht/Cargo.toml`, resolving a compilation and clippy failure in the GitHub Actions CI pipeline.
+
+### Upstream Baseline & Security Hardening
+- **Cypht 2.13.0 Production Baseline**: Upgraded the Dockerfile and baseline target to Cypht `v2.13.0` (incorporating critical SMTP attachment and chunk isolation fixes).
+- **Capability Handshake**: Introduced structured `capabilities` array and `bridge_api_version` in Bridge Ping responses, enabling feature detection over rigid version checks.
+- **Credential Debug Redaction**: Implemented custom `std::fmt::Debug` for `Credential` and `CyphtSession` to mask sensitive passwords and session tokens (`[REDACTED]`) from application logs and traces.
 - **P0 Fail-Closed PAT Deserialization**: Fixed a security vulnerability in `gateway-storage` where corrupted `account_allowlist_json` or `scopes_json` silently defaulted to `[]` via `unwrap_or_default()`, inadvertently escalating restricted PATs to full access across all accounts. Implemented strict `json_column()` deserializer that fails closed on invalid JSON.
-- **Dynamic Upstream Runtime & Unpinned Compatibility**: Decoupled the Gateway Bridge from the hardcoded `CYPHT_BASELINE_VERSION = "2.12.0"` string equality lock. The Bridge ping now dynamically discovers and logs upstream Cypht versions (`tracing::info!`), allowing seamless compatibility with Cypht 2.12.0, 2.12.2, 2.13.x, and master without artificial connection failures.
-- **Engineered Execution Plan for Mail Accounts (v0.6.0)**: Added `docs/ACCOUNTS_PLAN.md` detailing the unified, AI-friendly IMAP/SMTP account lifecycle management architecture with fail-fast connectivity pre-validation, atomic multi-section config transactions, and permanent ID retirement.
+- **SSO Multi-Container & Edge Protection**: Replaced hardcoded `127.0.0.1:18080` in Native SSO with configurable `GATEWAY_INTERNAL_URL` for container network compatibility, and blocked `/api/v1/auth/sso` from the public edge proxy.
+- **Audit Failure Resilience**: Decoupled audit log persistence errors from domain write outcomes, logging warnings rather than falsely failing external mutations that have already succeeded.
+- **Engineered Execution Plan for Mail Accounts (v0.6.0)**: Added `docs/ACCOUNTS_PLAN.md` with dependency-checked bundle deletion and secret reference pattern for MCP tools.
 
 ### Performance & Tooling
-- **Optimized Repository Verification**: Excluded the `target/` build directory from recursive secret scans in `scripts/check-repository.py`, reducing local check execution time from >20s to <2.5s.
+- **PAT Last-Used Throttling**: Throttled `touch_pat` SQLite updates to once every 60 seconds, eliminating redundant WAL writes on frequent API/MCP polling.
+- **Optimized Repository Verification**: Excluded the `target/` build directory from recursive secret scans in `scripts/check-repository.py`, reducing local check execution time from >20s to <1.5s.
 
 ## [0.5.2] - 2026-09-26 (Official Production Release)
 

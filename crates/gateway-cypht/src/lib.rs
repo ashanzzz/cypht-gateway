@@ -9,7 +9,7 @@ use std::time::Duration;
 use url::Url;
 
 const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
-const CYPHT_BASELINE_VERSION: &str = "2.12.0";
+const CYPHT_BASELINE_VERSION: &str = "2.13.0";
 
 #[derive(Debug, Clone)]
 pub struct CyphtConfig {
@@ -192,6 +192,8 @@ struct BridgePing {
     cypht_version: String,
     #[serde(default)]
     durable_user_config: bool,
+    #[serde(default)]
+    capabilities: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

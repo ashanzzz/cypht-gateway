@@ -247,7 +247,7 @@ impl GatewayService {
             "contacts.create",
             result.as_ref().ok().map(|contact| contact.id.as_str()),
             result.is_ok(),
-        )?;
+        );
         result
     }
 
@@ -258,7 +258,7 @@ impl GatewayService {
         request: ContactUpdateRequest,
     ) -> GatewayResult<Contact> {
         let result = self.update_contact_inner(principal, id, request).await;
-        self.audit_write(principal, "contacts.update", Some(id), result.is_ok())?;
+        self.audit_write(principal, "contacts.update", Some(id), result.is_ok());
         result
     }
 
@@ -269,7 +269,7 @@ impl GatewayService {
         confirm: bool,
     ) -> GatewayResult<()> {
         let result = self.delete_contact_inner(principal, id, confirm).await;
-        self.audit_write(principal, "contacts.delete", Some(id), result.is_ok())?;
+        self.audit_write(principal, "contacts.delete", Some(id), result.is_ok());
         result
     }
 
@@ -419,8 +419,8 @@ impl GatewayService {
         operation: &str,
         resource: Option<&str>,
         success: bool,
-    ) -> GatewayResult<()> {
-        self.store.audit(
+    ) {
+        if let Err(err) = self.store.audit(
             &principal.username,
             principal.auth_id.as_deref(),
             operation,
@@ -428,7 +428,9 @@ impl GatewayService {
             success,
             None,
             gateway_auth::now_unix(),
-        )
+        ) {
+            tracing::warn!(operation, error = %err, "Failed to persist audit log entry");
+        }
     }
     pub async fn accounts(&self, principal: &Principal) -> GatewayResult<Vec<Account>> {
         principal.requires(SCOPE_ACCOUNTS_READ)?;

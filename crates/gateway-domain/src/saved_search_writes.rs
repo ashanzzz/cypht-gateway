@@ -21,7 +21,7 @@ impl GatewayService {
             "saved_searches.create",
             result.as_ref().ok().map(|row| row.id.as_str()),
             result.is_ok(),
-        )?;
+        );
         result
     }
 
@@ -32,7 +32,7 @@ impl GatewayService {
         request: SavedSearchUpdateRequest,
     ) -> GatewayResult<SavedSearch> {
         let result = self.update_saved_search_inner(principal, id, request).await;
-        self.audit_write(principal, "saved_searches.update", Some(id), result.is_ok())?;
+        self.audit_write(principal, "saved_searches.update", Some(id), result.is_ok());
         result
     }
 
@@ -43,7 +43,7 @@ impl GatewayService {
         confirm: bool,
     ) -> GatewayResult<()> {
         let result = self.delete_saved_search_inner(principal, id, confirm).await;
-        self.audit_write(principal, "saved_searches.delete", Some(id), result.is_ok())?;
+        self.audit_write(principal, "saved_searches.delete", Some(id), result.is_ok());
         result
     }
 

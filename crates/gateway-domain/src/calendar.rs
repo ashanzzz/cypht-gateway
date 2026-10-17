@@ -77,7 +77,7 @@ impl GatewayService {
             "calendar.event.create",
             result.as_ref().ok().map(|event| event.id.as_str()),
             result.is_ok(),
-        )?;
+        );
         result
     }
 
@@ -96,7 +96,7 @@ impl GatewayService {
             "calendar.event.delete",
             Some(event_id),
             result.is_ok(),
-        )?;
+        );
         result
     }
 
