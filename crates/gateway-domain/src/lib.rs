@@ -1081,7 +1081,7 @@ impl GatewayService {
             ));
         }
         let session = self.ensure_cypht_session(principal).await?;
-        let raw = self.cypht.move_message(&session, &principal.credential, &serde_json::json!({"account_id": &account, "folder": &folder, "uid": &uid, "destination": &destination})).await?;
+        let raw = self.cypht.move_message(&session, &serde_json::json!({"account_id": &account, "folder": &folder, "uid": &uid, "destination": &destination})).await?;
         let result = self.map_action_result(principal, &account, raw)?;
         self.audit(
             &principal.username,
@@ -1106,7 +1106,6 @@ impl GatewayService {
             .cypht
             .archive_message(
                 &session,
-                &principal.credential,
                 &serde_json::json!({"account_id": &account, "folder": &folder, "uid": &uid}),
             )
             .await?;
@@ -1134,7 +1133,6 @@ impl GatewayService {
             .cypht
             .delete_message(
                 &session,
-                &principal.credential,
                 &serde_json::json!({"account_id": &account, "folder": &folder, "uid": &uid}),
             )
             .await?;

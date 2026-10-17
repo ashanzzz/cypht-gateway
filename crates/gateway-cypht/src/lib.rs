@@ -200,6 +200,7 @@ pub const CAP_CALENDAR_WRITE: &str = "calendar.write.v1";
 pub const CAP_SAVED_SEARCHES_READ: &str = "saved_searches.read.v1";
 pub const CAP_SAVED_SEARCHES_WRITE: &str = "saved_searches.write.v1";
 pub const CAP_SIEVE_READ: &str = "sieve.read.v1";
+pub const CAP_FEEDS_READ: &str = "feeds.read.v1";
 pub const CAP_USER_CONFIG_DURABLE: &str = "user_config.durable.v1";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -300,7 +301,7 @@ impl CyphtClient {
     }
 
     pub async fn bridge_ping(&self, session: &CyphtSession) -> GatewayResult<BridgePing> {
-        let ping: BridgePing = self.bridge_get(session, "ajax_gateway_ping", &[]).await?;
+        let ping = self.cached_or_fetch_ping(session).await?;
         validate_ping_versions(&ping)?;
         if let Ok(mut lock) = self.cached_ping.write() {
             *lock = Some(ping.clone());
@@ -308,20 +309,38 @@ impl CyphtClient {
         Ok(ping)
     }
 
-    pub async fn require_capability(
-        &self,
-        session: &CyphtSession,
-        capability: &str,
-    ) -> GatewayResult<()> {
+    async fn cached_or_fetch_ping(&self, session: &CyphtSession) -> GatewayResult<BridgePing> {
         let cached = self
             .cached_ping
             .read()
             .map_err(|_| GatewayError::Internal("lock poisoned".into()))?
             .clone();
-        let ping = match cached {
-            Some(p) => p,
-            None => self.bridge_ping(session).await?,
-        };
+        match cached {
+            Some(ping) => Ok(ping),
+            None => self.bridge_ping(session).await,
+        }
+    }
+
+    pub async fn require_capabilities(
+        &self,
+        session: &CyphtSession,
+        capabilities: &[&'static str],
+    ) -> GatewayResult<()> {
+        let ping = self.cached_or_fetch_ping(session).await?;
+        for cap in capabilities {
+            if !ping.supports(cap) {
+                return Err(GatewayError::CapabilityUnavailable((*cap).to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn require_capability(
+        &self,
+        session: &CyphtSession,
+        capability: &str,
+    ) -> GatewayResult<()> {
+        let ping = self.cached_or_fetch_ping(session).await?;
         if !ping.supports(capability) {
             return Err(GatewayError::CapabilityUnavailable(capability.to_string()));
         }
@@ -401,10 +420,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeContact> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_CONTACTS_WRITE,
             "ajax_gateway_contact_create",
             payload,
         )
@@ -433,10 +452,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_CONTACTS_WRITE,
             "ajax_gateway_contact_delete",
             payload,
         )
@@ -453,10 +472,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeTag> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_TAGS_WRITE,
             "ajax_gateway_tag_create",
             payload,
         )
@@ -485,10 +504,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_TAGS_WRITE,
             "ajax_gateway_tag_delete",
             payload,
         )
@@ -499,7 +518,7 @@ impl CyphtClient {
         &self,
         session: &CyphtSession,
     ) -> GatewayResult<Vec<BridgeSieveStatus>> {
-        self.bridge_get(session, "ajax_gateway_sieve_status", &[])
+        self.get_with_capability(session, CAP_SIEVE_READ, "ajax_gateway_sieve_status", &[])
             .await
     }
 
@@ -509,13 +528,13 @@ impl CyphtClient {
         start_at: i64,
         end_at: i64,
     ) -> GatewayResult<Vec<BridgeCalendarEvent>> {
-        self.bridge_get(
+        let start_s = start_at.to_string();
+        let end_s = end_at.to_string();
+        self.get_with_capability(
             session,
+            CAP_CALENDAR_READ,
             "ajax_gateway_calendar_events",
-            &[
-                ("start_at", &start_at.to_string()),
-                ("end_at", &end_at.to_string()),
-            ],
+            &[("start_at", &start_s), ("end_at", &end_s)],
         )
         .await
     }
@@ -542,29 +561,40 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_CALENDAR_WRITE,
             "ajax_gateway_calendar_delete",
             payload,
         )
         .await
     }
     pub async fn feeds(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeFeed>> {
-        self.bridge_get(session, "ajax_gateway_feeds", &[]).await
+        self.get_with_capability(session, CAP_FEEDS_READ, "ajax_gateway_feeds", &[])
+            .await
     }
 
     pub async fn feed(&self, session: &CyphtSession, id: &str) -> GatewayResult<BridgeFeed> {
-        self.bridge_get(session, "ajax_gateway_feed", &[("feed_id", id)])
-            .await
+        self.get_with_capability(
+            session,
+            CAP_FEEDS_READ,
+            "ajax_gateway_feed",
+            &[("feed_id", id)],
+        )
+        .await
     }
     pub async fn saved_searches(
         &self,
         session: &CyphtSession,
     ) -> GatewayResult<Vec<BridgeSavedSearch>> {
-        self.bridge_get(session, "ajax_gateway_saved_searches", &[])
-            .await
+        self.get_with_capability(
+            session,
+            CAP_SAVED_SEARCHES_READ,
+            "ajax_gateway_saved_searches",
+            &[],
+        )
+        .await
     }
 
     pub async fn create_saved_search(
@@ -573,10 +603,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeSavedSearch> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_SAVED_SEARCHES_WRITE,
             "ajax_gateway_saved_search_create",
             payload,
         )
@@ -605,10 +635,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_SAVED_SEARCHES_WRITE,
             "ajax_gateway_saved_search_delete",
             payload,
         )
@@ -620,10 +650,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_TAGS_WRITE,
             "ajax_gateway_message_tag_add",
             payload,
         )
@@ -636,10 +666,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            true,
+            credential,
+            CAP_TAGS_WRITE,
             "ajax_gateway_message_tag_remove",
             payload,
         )
@@ -669,8 +699,9 @@ impl CyphtClient {
     ) -> GatewayResult<BridgeMessagePage> {
         let offset_s = offset.to_string();
         let limit_s = limit.to_string();
-        self.bridge_get(
+        self.get_with_capability(
             session,
+            CAP_MAIL_READ,
             "ajax_gateway_messages",
             &[
                 ("account_id", account_id),
@@ -713,8 +744,9 @@ impl CyphtClient {
         folder: &str,
         uid: &str,
     ) -> GatewayResult<BridgeMessage> {
-        self.bridge_get(
+        self.get_with_capability(
             session,
+            CAP_MAIL_READ,
             "ajax_gateway_message",
             &[("account_id", account_id), ("folder", folder), ("uid", uid)],
         )
@@ -729,6 +761,7 @@ impl CyphtClient {
         uid: &str,
         part: &str,
     ) -> GatewayResult<BridgeDownload> {
+        self.require_capability(session, CAP_MAIL_READ).await?;
         let mut url = self.page_url("ajax_gateway_attachment")?;
         url.query_pairs_mut()
             .append_pair("account_id", account_id)
@@ -780,6 +813,7 @@ impl CyphtClient {
         content_type: &str,
         bytes: &[u8],
     ) -> GatewayResult<BridgeUpload> {
+        self.require_capability(session, CAP_MAIL_WRITE).await?;
         let url = self.page_url("ajax_gateway_upload")?;
         let mut headers = self.bridge_headers(session)?;
         headers.insert(
@@ -843,12 +877,10 @@ impl CyphtClient {
     pub async fn move_message(
         &self,
         session: &CyphtSession,
-        credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.post_user_config_with_capability(
+        self.write_with_capability(
             session,
-            credential,
             CAP_MAIL_WRITE,
             "ajax_gateway_message_move",
             payload,
@@ -859,12 +891,10 @@ impl CyphtClient {
     pub async fn archive_message(
         &self,
         session: &CyphtSession,
-        credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.post_user_config_with_capability(
+        self.write_with_capability(
             session,
-            credential,
             CAP_MAIL_WRITE,
             "ajax_gateway_message_archive",
             payload,
@@ -875,12 +905,10 @@ impl CyphtClient {
     pub async fn delete_message(
         &self,
         session: &CyphtSession,
-        credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.post_user_config_with_capability(
+        self.write_with_capability(
             session,
-            credential,
             CAP_MAIL_WRITE,
             "ajax_gateway_message_delete",
             payload,
@@ -934,7 +962,7 @@ impl CyphtClient {
             .map_err(|e| GatewayError::Internal(format!("encode bridge payload: {e}")))?;
         let mut headers = self.bridge_headers(session)?;
         if let Some(credential) = credential {
-            let ping: BridgePing = self.bridge_get(session, "ajax_gateway_ping", &[]).await?;
+            let ping = self.cached_or_fetch_ping(session).await?;
             validate_ping_versions(&ping)?;
             if require_storage && !ping.durable_user_config {
                 return Err(GatewayError::CapabilityUnavailable(
