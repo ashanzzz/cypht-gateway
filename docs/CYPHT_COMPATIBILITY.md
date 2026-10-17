@@ -1,8 +1,18 @@
 # Cypht compatibility
 
-## Unraid runtime baseline
+## Production runtime baseline (Cypht v2.13.0)
 
-The supported runtime for this Gateway work is Cypht `2.12.0` in Unraid Docker. Cypht native UI remains at `http://192.168.8.11:8088/`. Deploy Gateway on a separate host port. When both containers share a Docker network, use a private Cypht service URL such as `http://cypht:80/`; `localhost` inside the Gateway container does not name Cypht.
+As of October 2026, the production baseline is Cypht `2.13.0` (official release 2026-10-16).
+Upgrading to 2.13.0 resolves key security and reliability issues identified in earlier releases:
+- Native SMTP attachment path traversal and chunk upload isolation.
+- Scoped Tag mutations preventing cross-account UID collisions.
+- Removal of unsafe `unserialize()` logout input handling.
+
+Backward compatibility with Cypht `2.12.0` and `2.12.2` is retained through capability handshake negotiation.
+
+## Legacy Unraid runtime baseline (Cypht 2.12.0)
+
+The historical baseline for initial Gateway development was Cypht `2.12.0` in Unraid Docker. Cypht native UI remains at `http://192.168.8.11:8088/`. Deploy Gateway on a separate host port. When both containers share a Docker network, use a private Cypht service URL such as `http://cypht:80/`; `localhost` inside the Gateway container does not name Cypht.
 
 The official Cypht `v2.12.0` GitHub ZIP tag archive used for review has SHA-256 `44CF3A67438ED1D0921DBC1CAB58A6939B1A09667156984CA193DBCE57A24605`. The separately downloaded source tarball used for local PHP checks has SHA-256 `4866c7ab9165b37fb27362f339c43dedd698cb40573c834bb3b75f91deb0260e`. It defines `CYPHT_VERSION` as `2.12.0`. The earlier v2.12.2 audit remains in `docs/CYPHT_V2_12_2_AUDIT.md` as historical evidence, not the runtime compatibility contract. The user's v2.12.2 Docker login failure is not reproduced here, and upgrading to that version is not required by this goal.
 
@@ -33,9 +43,9 @@ Cypht 2.12.0 Calendar stores a user-level `calendar_events` array with `title`, 
 ## Tags repository scope
 
 Cypht 2.12.0 `Hm_Tags::removeMessage()` removes a matching UID from all servers and folders attached to a tag. UIDs can repeat across accounts. The Gateway Bridge instead edits one account and folder entry, and a repository test covers two accounts with the same UID. The REST domain denies account-restricted PATs access to global Tags. Gateway MOVE and archive now synchronize Tags when Cypht returns a verified new UID. When it does not, the Bridge keeps the old association and reports `tag_sync: pending` rather than guessing. Permanent deletion removes a scoped Tag association; a Trash move without a new UID stays pending. These paths passed mock Bridge tests, not live Unraid provider tests.
-## Version handshake
+## Version and capability handshake
 
-The private Bridge ping returns `CYPHT_VERSION` and the Bridge product version. The Rust adapter accepts exactly Cypht `2.12.0` and the matching Gateway/Bridge product version. It rejects unknown or unreviewed upstream versions with a bounded capability-unavailable error. It never returns Cypht credentials. A version match does not prove an optional module is enabled or a provider is reachable.
+The private Bridge ping returns `cypht_version`, `bridge_version`, `bridge_api_version`, and a structured `capabilities` list. The Rust adapter verifies bridge health and logs upstream Cypht runtime details dynamically (`tracing::info!`), inspecting advertised capabilities (`mail.read.v1`, `mail.write.v1`, `user_config.durable.v1`, `accounts.read.v1`, etc.) rather than rejecting newer upstream versions based solely on string equality. For unknown or untested future major versions, write operations default to fail-closed unless explicit administrative override is enabled.
 
 ## Deployment and security boundaries
 
