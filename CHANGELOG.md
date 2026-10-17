@@ -20,6 +20,13 @@ All notable changes to this project will be documented here. The project follows
 - **Audit Failure Resilience**: Decoupled audit log persistence errors from domain write outcomes, logging warnings rather than falsely failing external mutations that have already succeeded.
 - **Engineered Execution Plan for Mail Accounts (v0.6.0)**: Added `docs/ACCOUNTS_PLAN.md` with dependency-checked bundle deletion and secret reference pattern for MCP tools.
 
+### Engineering Discipline & Repository Invariants
+- **Codified Engineering Discipline in AGENTS.md**: Enforced strict rules governing language boundaries, preservation of domain semantics over visual shape, capability contract requirements, evidence-based status claims, and antagonist review steps.
+- **Automated Capability Producer-Consumer Checker**: Enhanced `scripts/check-repository.py` to mechanically verify that every capability constant consumed by Rust is advertised by the PHP Bridge, preventing broken capability contracts.
+- **PHP Mirror Drift Guard**: Added automated zero-drift verification in `scripts/check-repository.py` between `cypht-module/gateway` and `modules/gateway`.
+- **Feeds Capability Advertising**: Dynamically advertised `feeds.read.v1` in PHP `Hm_Handler_gateway_ping` when the Cypht `feeds` module is supported.
+- **Accurate Mailbox Read Capability**: Re-mapped `mailboxes()` in `gateway-cypht` to `CAP_MAIL_READ` to align with IMAP folder retrieval semantics.
+
 ### Performance & Tooling
 - **PAT Last-Used Throttling**: Throttled `touch_pat` SQLite updates to once every 60 seconds, eliminating redundant WAL writes on frequent API/MCP polling.
 - **Optimized Repository Verification**: Excluded the `target/` build directory from recursive secret scans in `scripts/check-repository.py`, reducing local check execution time from >20s to <1.5s.

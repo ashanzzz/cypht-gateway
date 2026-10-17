@@ -107,6 +107,9 @@ class Hm_Handler_gateway_ping extends Hm_Handler_Module {
             'saved_searches.read.v1',
             'sieve.read.v1'
         );
+        if (method_exists($this, 'module_is_supported') && $this->module_is_supported('feeds')) {
+            $capabilities[] = 'feeds.read.v1';
+        }
         $durable = isset($this->user_config) && is_object($this->user_config) &&
             method_exists($this->user_config, 'gateway_storage_is_safe') &&
             $this->user_config->gateway_storage_is_safe() === true;

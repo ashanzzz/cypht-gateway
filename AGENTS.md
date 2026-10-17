@@ -26,6 +26,164 @@ This repository is designed to be maintained primarily by AI coding agents. Trea
 20. **Saved Searches are user-wide settings.** Deny account-restricted PATs before reading or writing them. Map Cypht advanced-search account/folder strings to opaque Gateway IDs. Persist encrypted owner-bound ID mappings. Never audit search names or query data. Keep `searches.read` out of default AI scopes. Reject rename collisions and retire deleted IDs.
 21. **Calendar is a limited Cypht 2.12.0 adapter.** Expose only the user-level calendar_events model, RFC3339 range reads, create, and confirmed unique delete. Do not expose update, all-day, end time, location, invitations, or complex recurrence until Cypht provides stable primitives.
 
+## Engineering decision discipline
+
+AI agents must optimize for correctness, simplicity, and measured system behavior rather than language preference, architectural fashion, or visual uniformity.
+
+### Language and process boundaries
+
+- Do not move functionality to Rust merely because Rust is newer, statically typed, or perceived as faster.
+- Do not keep functionality in PHP merely because it already exists there.
+- Put Cypht-native protocol and configuration semantics in the PHP adapter when Cypht already owns the relevant objects, state, transaction boundaries, or protocol behavior.
+- Put authentication, authorization policy, OAuth, MCP transport, durable scheduling, idempotency, operation journals, cross-user audit, process isolation, and other independent control-plane state in Rust.
+- A language-boundary change requires a concrete reason such as state ownership, lifecycle isolation, concurrency requirements, security isolation, or a measured performance bottleneck.
+- Do not claim a performance improvement from language choice alone. Measure representative latency, CPU, allocations, lock contention, and network time first.
+- Every additional RPC, serialization boundary, database, queue, cache, crate, abstraction, or service must justify the failure modes and maintenance cost it introduces.
+
+### Preserve semantics before preserving shape
+
+Code uniformity is not an engineering goal by itself.
+
+Before replacing multiple call sites with a shared helper, classify each affected operation by:
+
+- read vs write;
+- remote provider mutation vs local Cypht user-config mutation;
+- whether provider credentials or a Cypht config key are actually required;
+- whether durable local persistence is required;
+- whether the operation has an external side effect;
+- whether the operation is idempotent;
+- whether a lost response can leave an uncertain outcome;
+- whether its capability is deployment-, user-, account-, mailbox-, or session-specific.
+
+A refactor MUST NOT change any of those properties unless the change explicitly intends to change product semantics and has tests for the new behavior.
+
+Do not add credential parameters "for consistency". Secrets must cross a boundary only when the downstream operation actually requires them.
+
+Transport primitives must transport requests. Authorization, capability policy, durability policy, and business semantics belong above raw transport and must not be silently embedded into generic HTTP helpers.
+
+### Capability contract rules
+
+Bridge capabilities describe implementation availability, not caller authorization.
+
+Public scopes answer:
+
+> Is this caller allowed to perform the operation?
+
+Bridge capabilities answer:
+
+> Can this Bridge deployment implement the operation contract?
+
+Account or mailbox capabilities answer:
+
+> Can this particular account or mailbox perform the operation?
+
+Do not mix these layers.
+
+`BridgePing` capabilities may contain deployment/backend properties only because Bridge metadata can be cached across sessions. Never put user-, account-, mailbox-, credential-, or session-specific facts in the global Bridge capability cache.
+
+For every capability consumed by Rust, verify all of the following before claiming the capability is implemented:
+
+1. the Rust consumer names the capability;
+2. the PHP Bridge can advertise the exact capability string;
+3. optional-module capabilities are advertised only when that module is actually available;
+4. a test covers both capability-present and capability-missing behavior;
+5. the capability is represented in the operation registry when it belongs to a public operation.
+
+A capability existing only on the consumer side is a broken contract.
+
+A capability existing only on the producer side is allowed for forward compatibility.
+
+### Evidence before completion claims
+
+Never use implementation intent as evidence.
+
+After modifying code, inspect the final repository state again. Do not rely on the patch you intended to write, an earlier diff, or your own change summary.
+
+Use these status terms precisely:
+
+- `design-only`: described but not implemented;
+- `implemented`: code exists;
+- `locally-tested`: relevant local checks passed;
+- `CI-green`: the required workflow completed successfully;
+- `validated`: representative integration/runtime behavior was exercised;
+- `closed`: every explicitly defined completion gate is satisfied.
+
+These states are not interchangeable:
+
+`implemented != tested != CI-green != validated != closed`
+
+Never say "fully fixed", "100% covered", "complete", "all methods", "no remaining bypass", or equivalent language unless that property is mechanically verified against the final source tree.
+
+If a custom local script is used as evidence for a recurring invariant, either:
+
+- commit that check to the repository and run it in CI; or
+- describe the result only as a local observation, not as a repository guarantee.
+
+CI success proves only the invariants CI actually tests. A green CI run does not prove semantic properties that have no corresponding test or checker.
+
+### Semantic diff review
+
+Before finishing any refactor, explicitly inspect whether the change altered:
+
+- authorization or required scopes;
+- capability requirements;
+- secrets crossing process boundaries;
+- persistence requirements;
+- network request count;
+- timeout behavior;
+- transaction boundaries;
+- external side effects;
+- idempotency behavior;
+- retry behavior;
+- uncertain-outcome handling;
+- public IDs or information exposure.
+
+Unexpected changes in any of these dimensions are regressions even when formatting, Clippy, unit tests, and compilation pass.
+
+### Repeated AI mistakes become executable invariants
+
+When the same class of mistake is discovered more than once, do not solve it only by adding another prose reminder.
+
+Prefer, in order:
+
+1. make the invalid state unrepresentable in types or interfaces;
+2. add a focused unit/integration test;
+3. add a small repository invariant checker;
+4. only then add or clarify prose in this file.
+
+Examples include:
+
+- Rust consuming a Bridge capability that PHP never advertises;
+- mirrored PHP Bridge sources drifting apart;
+- a public adapter method bypassing its required capability gate;
+- a secret being passed to an operation that does not require it;
+- a mutable image tag being published before all release artifacts succeed.
+
+### Release truthfulness
+
+Never call a workflow green while its status is not `completed` with conclusion `success`.
+
+Do not infer that a release is coherent merely because every image eventually built successfully.
+
+Immutable commit-SHA image identities are authoritative.
+
+Mutable tags such as `edge`, semantic-version aliases, and `latest` must only be promoted after all required artifacts for the same commit have succeeded.
+
+`latest` is release-only and must never be moved by an ordinary `main` branch push.
+
+### Completion review
+
+Before declaring a change closed:
+
+1. re-read every final file materially changed by the work;
+2. search for old call paths or bypasses the change was intended to eliminate;
+3. compare producer and consumer contracts across process boundaries;
+4. run the repository checks and relevant focused tests;
+5. confirm required GitHub Actions runs reached `completed/success`;
+6. state any property that remains untested or only locally verified.
+
+The purpose of the final review is to try to disprove the agent's own completion claim.
+
 ## Change workflow
 
 Before finishing a change:
@@ -33,13 +191,15 @@ Before finishing a change:
 ```bash
 python3 scripts/check-version.py
 python3 scripts/check-repository.py
+python3 scripts/check-frontend.py
 find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo build --release --workspace
 ```
 
-If a local tool is unavailable, do not claim it passed. CI is the final gate.
+If a local tool is unavailable, do not claim it passed. CI is a required gate, not proof of untested semantic properties. Do not report CI as green until the workflow itself is completed with conclusion=success. Successful individual jobs are not sufficient.
 
 ## Versioning
 

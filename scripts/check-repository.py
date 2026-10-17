@@ -106,6 +106,36 @@ baseline_match = re.search(r'^const CYPHT_BASELINE_VERSION: &str = "([^"]+)";', 
 image_match = re.search(r'^ARG CYPHT_IMAGE=cypht/cypht:([^\s]+)$', cypht_image, re.M)
 if not baseline_match or not image_match:
     errors.append("missing Cypht runtime baseline or Docker image reference")
+
+# Capability producer vs consumer check
+rust_caps = set(
+    re.findall(
+        r'^pub const CAP_[A-Z0-9_]+: &str = "([^"]+)";',
+        bridge_adapter,
+        re.M,
+    )
+)
+bridge_php_path = ROOT / "cypht-module/gateway/handler_modules.php"
+if bridge_php_path.is_file():
+    bridge_php = bridge_php_path.read_text(encoding="utf-8")
+    php_cap_literals = set(
+        re.findall(r"'([a-z0-9_.]+\.v[0-9]+)'", bridge_php)
+    )
+    missing_bridge_caps = rust_caps - php_cap_literals
+    if missing_bridge_caps:
+        errors.append(
+            "Rust consumes Bridge capabilities not represented by PHP: "
+            + ", ".join(sorted(missing_bridge_caps))
+        )
+
+# Mirror drift check between cypht-module/gateway and modules/gateway
+for source in (ROOT / "cypht-module/gateway").glob("*.php"):
+    mirror = ROOT / "modules/gateway" / source.name
+    if not mirror.is_file():
+        errors.append(f"missing mirrored Gateway module: {mirror.relative_to(ROOT)}")
+        continue
+    if source.read_bytes() != mirror.read_bytes():
+        errors.append(f"Gateway PHP mirror drift: {source.name}")
 cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
 members = re.findall(r'^\s*"([^"]+)",?\s*$', cargo, re.M)
 for member in members:

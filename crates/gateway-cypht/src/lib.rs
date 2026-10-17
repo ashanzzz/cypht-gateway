@@ -682,7 +682,7 @@ impl CyphtClient {
     ) -> GatewayResult<Vec<BridgeMailbox>> {
         self.get_with_capability(
             session,
-            CAP_ACCOUNTS_READ,
+            CAP_MAIL_READ,
             "ajax_gateway_mailboxes",
             &[("account_id", account_id)],
         )
