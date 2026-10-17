@@ -633,7 +633,8 @@ mod tests {
 
     #[test]
     fn sso_principal_cannot_create_pat_without_reauth() {
-        let auth = test_auth();
+        let store = Store::open_memory().unwrap();
+        let auth = AuthService::new(store, test_vault(), 3600);
         let sso_user = Principal {
             username: "bob".into(),
             auth_kind: AuthKind::SsoSession,
