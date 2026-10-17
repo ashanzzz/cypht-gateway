@@ -692,8 +692,9 @@ impl CyphtClient {
     ) -> GatewayResult<BridgeMessagePage> {
         let account_ids = account_ids.join(",");
         let limit_s = limit.to_string();
-        self.bridge_get(
+        self.get_with_capability(
             session,
+            CAP_MAIL_READ,
             "ajax_gateway_search",
             &[
                 ("account_ids", &account_ids),
@@ -812,7 +813,7 @@ impl CyphtClient {
         session: &CyphtSession,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeWriteResult> {
-        self.bridge_post(session, "ajax_gateway_send", payload)
+        self.write_with_capability(session, CAP_MAIL_WRITE, "ajax_gateway_send", payload)
             .await
     }
 
@@ -821,7 +822,7 @@ impl CyphtClient {
         session: &CyphtSession,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeWriteResult> {
-        self.bridge_post(session, "ajax_gateway_draft", payload)
+        self.write_with_capability(session, CAP_MAIL_WRITE, "ajax_gateway_draft", payload)
             .await
     }
 
@@ -830,8 +831,13 @@ impl CyphtClient {
         session: &CyphtSession,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post(session, "ajax_gateway_message_update", payload)
-            .await
+        self.write_with_capability(
+            session,
+            CAP_MAIL_WRITE,
+            "ajax_gateway_message_update",
+            payload,
+        )
+        .await
     }
 
     pub async fn move_message(
@@ -840,10 +846,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            false,
+            credential,
+            CAP_MAIL_WRITE,
             "ajax_gateway_message_move",
             payload,
         )
@@ -856,10 +862,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            false,
+            credential,
+            CAP_MAIL_WRITE,
             "ajax_gateway_message_archive",
             payload,
         )
@@ -872,10 +878,10 @@ impl CyphtClient {
         credential: &Credential,
         payload: &serde_json::Value,
     ) -> GatewayResult<BridgeActionResult> {
-        self.bridge_post_with_config_key(
+        self.post_user_config_with_capability(
             session,
-            Some(credential),
-            false,
+            credential,
+            CAP_MAIL_WRITE,
             "ajax_gateway_message_delete",
             payload,
         )
