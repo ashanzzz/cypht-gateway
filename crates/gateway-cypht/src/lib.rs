@@ -360,7 +360,7 @@ impl CyphtClient {
         payload: &serde_json::Value,
     ) -> GatewayResult<T> {
         self.require_capability(session, capability).await?;
-        self.bridge_write(session, page, payload).await
+        self.bridge_post(session, page, payload).await
     }
 
     pub async fn accounts(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeAccount>> {
