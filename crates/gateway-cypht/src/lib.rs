@@ -301,7 +301,7 @@ impl CyphtClient {
     }
 
     pub async fn bridge_ping(&self, session: &CyphtSession) -> GatewayResult<BridgePing> {
-        let ping = self.cached_or_fetch_ping(session).await?;
+        let ping: BridgePing = self.bridge_get(session, "ajax_gateway_ping", &[]).await?;
         validate_ping_versions(&ping)?;
         if let Ok(mut lock) = self.cached_ping.write() {
             *lock = Some(ping.clone());
