@@ -197,6 +197,7 @@ async fn me(State(state): State<Arc<ApiState>>, headers: HeaderMap) -> ApiResult
         username: principal.username,
         auth_kind: match principal.auth_kind {
             gateway_auth::AuthKind::Session => "session",
+            gateway_auth::AuthKind::SsoSession => "sso_session",
             gateway_auth::AuthKind::Pat => "pat",
         }
         .into(),

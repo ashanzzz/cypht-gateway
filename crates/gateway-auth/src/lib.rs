@@ -274,7 +274,7 @@ impl AuthService {
         if matches!(principal.auth_kind, AuthKind::SsoSession)
             || principal.credential.password.is_empty()
         {
-            return Err(GatewayError::Forbidden(
+            return Err(GatewayError::PermissionDenied(
                 "creating a PAT from an SSO session requires re-authentication".into(),
             ));
         }
@@ -657,7 +657,7 @@ mod tests {
                 Vec::new(),
                 None
             ),
-            Err(GatewayError::Forbidden(_))
+            Err(GatewayError::PermissionDenied(_))
         ));
     }
 }

@@ -27,7 +27,7 @@ jobs:
       - run: python3 scripts/check-repository.py
       - run: python3 scripts/check-frontend.py
       - run: find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
-      - name: Cypht 2.12.0 source tests
+      - name: Cypht 2.13.0 source tests
         run: |
           php tests/bridge_contract.php
           curl --fail --location --retry 3 https://codeload.github.com/cypht-org/cypht/zip/refs/tags/v2.12.0 -o /tmp/cypht-v2.12.0.zip
@@ -148,7 +148,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
           labels: |
-            org.opencontainers.image.description=Private Gateway module on Cypht 2.12.0
+            org.opencontainers.image.description=Private Gateway module on Cypht 2.13.0
       - name: Build and publish Gateway image
         uses: docker/build-push-action@v6
         with:
@@ -160,12 +160,12 @@ jobs:
           labels: ${{ steps.gateway-meta.outputs.labels }}
           cache-from: type=gha,scope=gateway
           cache-to: type=gha,scope=gateway,mode=max
-      - name: Build and publish Cypht 2.12.0 Bridge image
+      - name: Build and publish Cypht 2.13.0 Bridge image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.cypht
-          build-args: CYPHT_IMAGE=cypht/cypht:2.12.0
+          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
           platforms: linux/amd64
           push: true
           tags: ${{ steps.bridge-meta.outputs.tags }}
@@ -183,13 +183,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
           labels: |
-            org.opencontainers.image.description=All-in-One Cypht 2.12.0 Webmail with REST API and MCP server
+            org.opencontainers.image.description=All-in-One Cypht 2.13.0 Webmail with REST API and MCP server
       - name: Build and publish All-in-One image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.aio
-          build-args: CYPHT_IMAGE=cypht/cypht:2.12.0
+          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
           platforms: linux/amd64
           push: true
           tags: ${{ steps.aio-meta.outputs.tags }}

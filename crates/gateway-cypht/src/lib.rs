@@ -186,21 +186,28 @@ pub struct BridgeDownload {
     pub content_type: Option<String>,
 }
 
+pub const SUPPORTED_BRIDGE_API_VERSION: u32 = 1;
+
+pub const CAP_MAIL_READ: &str = "mail.read.v1";
+pub const CAP_MAIL_WRITE: &str = "mail.write.v1";
+pub const CAP_ACCOUNTS_READ: &str = "accounts.read.v1";
+pub const CAP_CONTACTS: &str = "contacts.v1";
+pub const CAP_TAGS: &str = "tags.v1";
+pub const CAP_CALENDAR: &str = "calendar.v1";
+pub const CAP_SAVED_SEARCHES: &str = "saved_searches.v1";
+pub const CAP_SIEVE_READ: &str = "sieve.read.v1";
+pub const CAP_USER_CONFIG_DURABLE: &str = "user_config.durable.v1";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct BridgePing {
     pub status: String,
     pub bridge_version: String,
-    #[serde(default = "default_bridge_api_version")]
     pub bridge_api_version: u32,
     pub cypht_version: String,
     #[serde(default)]
     pub durable_user_config: bool,
     #[serde(default)]
     pub capabilities: Vec<String>,
-}
-
-fn default_bridge_api_version() -> u32 {
-    1
 }
 
 impl BridgePing {
@@ -318,6 +325,7 @@ impl CyphtClient {
     }
 
     pub async fn accounts(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeAccount>> {
+        self.require_capability(session, CAP_ACCOUNTS_READ).await?;
         self.bridge_get(session, "ajax_gateway_accounts", &[]).await
     }
 
@@ -330,6 +338,7 @@ impl CyphtClient {
         session: &CyphtSession,
         query: Option<&str>,
     ) -> GatewayResult<Vec<BridgeContact>> {
+        self.require_capability(session, CAP_CONTACTS).await?;
         let params = query
             .map(|value| vec![("query", value)])
             .unwrap_or_default();
@@ -338,6 +347,7 @@ impl CyphtClient {
     }
 
     pub async fn contact(&self, session: &CyphtSession, id: &str) -> GatewayResult<BridgeContact> {
+        self.require_capability(session, CAP_CONTACTS).await?;
         self.bridge_get(session, "ajax_gateway_contact", &[("contact_id", id)])
             .await
     }
@@ -390,6 +400,7 @@ impl CyphtClient {
         .await
     }
     pub async fn tags(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeTag>> {
+        self.require_capability(session, CAP_TAGS).await?;
         self.bridge_get(session, "ajax_gateway_tags", &[]).await
     }
 
@@ -971,11 +982,20 @@ fn validate_ping_versions(ping: &BridgePing) -> GatewayResult<()> {
         return Err(GatewayError::Upstream("bridge health check failed".into()));
     }
     if ping.bridge_version != env!("CARGO_PKG_VERSION") {
-        return Err(GatewayError::Upstream(
-            "bridge and Gateway versions do not match".into(),
-        ));
+        return Err(GatewayError::Upstream(format!(
+            "bridge version mismatch: gateway={}, bridge={}",
+            env!("CARGO_PKG_VERSION"),
+            ping.bridge_version,
+        )));
+    }
+    if ping.bridge_api_version != SUPPORTED_BRIDGE_API_VERSION {
+        return Err(GatewayError::Upstream(format!(
+            "unsupported bridge API version: gateway supports {SUPPORTED_BRIDGE_API_VERSION}, bridge reported {}",
+            ping.bridge_api_version,
+        )));
     }
     tracing::info!(
+        bridge_api_version = ping.bridge_api_version,
         upstream_cypht_version = %ping.cypht_version,
         bridge_version = %ping.bridge_version,
         baseline = %CYPHT_BASELINE_VERSION,
@@ -1015,6 +1035,7 @@ mod tests {
         let ping = BridgePing {
             status: "ok".into(),
             bridge_version: env!("CARGO_PKG_VERSION").into(),
+            bridge_api_version: SUPPORTED_BRIDGE_API_VERSION,
             cypht_version: CYPHT_BASELINE_VERSION.into(),
             durable_user_config: true,
             capabilities: vec!["mail.read.v1".into(), "user_config.durable.v1".into()],
@@ -1029,16 +1050,25 @@ mod tests {
         let mut ping = BridgePing {
             status: "ok".into(),
             bridge_version: env!("CARGO_PKG_VERSION").into(),
+            bridge_api_version: SUPPORTED_BRIDGE_API_VERSION,
             cypht_version: CYPHT_BASELINE_VERSION.into(),
             durable_user_config: false,
             capabilities: Vec::new(),
         };
         assert!(validate_ping_versions(&ping).is_ok());
+
         let legacy: BridgePing = serde_json::from_str(
-            r#"{"status":"ok","bridge_version":"0.4.0","cypht_version":"2.12.0"}"#,
+            r#"{"status":"ok","bridge_version":"0.4.0","bridge_api_version":1,"cypht_version":"2.12.0"}"#,
         )
-        .expect("legacy ping without storage flag should deserialize");
+        .expect("legacy ping with version should deserialize");
+        assert_eq!(legacy.bridge_api_version, 1);
         assert!(!legacy.durable_user_config);
+
+        // Rejects mismatched bridge API version
+        ping.bridge_api_version = 99;
+        assert!(validate_ping_versions(&ping).is_err());
+        ping.bridge_api_version = SUPPORTED_BRIDGE_API_VERSION;
+
         // Follow upstream dynamically without hard-rejecting newer releases
         ping.cypht_version = "2.12.2".into();
         assert!(validate_ping_versions(&ping).is_ok());

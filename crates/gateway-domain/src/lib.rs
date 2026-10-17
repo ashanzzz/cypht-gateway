@@ -204,9 +204,6 @@ impl GatewayService {
             ));
         }
         let session = self.ensure_cypht_session(principal).await?;
-        self.cypht
-            .require_capability(&session, "contacts.v1")
-            .await?;
         let rows = self.cypht.contacts(&session, query).await?;
         let contacts = rows
             .into_iter()
@@ -288,9 +285,6 @@ impl GatewayService {
         validate_contact_optional(request.phone.as_deref())?;
         validate_contact_optional(request.group.as_deref())?;
         let session = self.ensure_cypht_session(principal).await?;
-        self.cypht
-            .require_capability(&session, "contacts.v1")
-            .await?;
         let payload = serde_json::to_value(&request)
             .map_err(|e| GatewayError::Internal(format!("encode contact: {e}")))?;
         let row = self
@@ -441,9 +435,6 @@ impl GatewayService {
     pub async fn accounts(&self, principal: &Principal) -> GatewayResult<Vec<Account>> {
         principal.requires(SCOPE_ACCOUNTS_READ)?;
         let session = self.ensure_cypht_session(principal).await?;
-        self.cypht
-            .require_capability(&session, "accounts.read.v1")
-            .await?;
         let accounts = self.cypht.accounts(&session).await?;
         let mut result = Vec::new();
         for account in accounts {
