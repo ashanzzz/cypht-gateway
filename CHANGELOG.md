@@ -5,10 +5,13 @@ All notable changes to this project will be documented here. The project follows
 ## [Unreleased] - 2026-10-17
 
 ### Build & CI Fixes
-- **P0 CI Dependency Fix**: Added `tracing.workspace = true` to `crates/gateway-cypht/Cargo.toml`, resolving a compilation and clippy failure in the GitHub Actions CI pipeline.
+- **P0 CI Dependency Fixes**: Added `tracing.workspace = true` to both `crates/gateway-cypht/Cargo.toml` and `crates/gateway-domain/Cargo.toml`, resolving module resolution errors and container build failures in GitHub Actions.
+- **Capability Consumption & Gating**: Implemented `BridgePing::supports(&self, capability: &str)` and `CyphtClient::require_capability(&self, ...)` to actively evaluate negotiated bridge capabilities, resolving dead-code compiler warnings and completing P0-03.
 
 ### Upstream Baseline & Security Hardening
-- **Cypht 2.13.0 Production Baseline**: Upgraded the Dockerfile and baseline target to Cypht `v2.13.0` (incorporating critical SMTP attachment and chunk isolation fixes).
+- **Cypht 2.13.0 Production Baseline**: Upgraded `Dockerfile.cypht`, `Dockerfile.aio`, and CI workflow container builds to Cypht `v2.13.0` (incorporating critical SMTP attachment and chunk isolation fixes).
+- **SSO PAT Re-authentication Barrier (P0-06)**: Introduced `AuthKind::SsoSession` to prevent passwordless native SSO sessions from minting long-lived PATs with empty credentials, requiring explicit re-authentication.
+- **Vault Secret Buffer Zeroization (P0-07)**: Wrapped transient plaintext encryption and decryption buffers in `Zeroizing<Vec<u8>>` to eliminate lingering secret residue in heap memory.
 - **Capability Handshake**: Introduced structured `capabilities` array and `bridge_api_version` in Bridge Ping responses, enabling feature detection over rigid version checks.
 - **Credential Debug Redaction**: Implemented custom `std::fmt::Debug` for `Credential` and `CyphtSession` to mask sensitive passwords and session tokens (`[REDACTED]`) from application logs and traces.
 - **P0 Fail-Closed PAT Deserialization**: Fixed a security vulnerability in `gateway-storage` where corrupted `account_allowlist_json` or `scopes_json` silently defaulted to `[]` via `unwrap_or_default()`, inadvertently escalating restricted PATs to full access across all accounts. Implemented strict `json_column()` deserializer that fails closed on invalid JSON.

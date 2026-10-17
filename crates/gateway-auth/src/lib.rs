@@ -10,7 +10,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 pub const SCOPE_ACCOUNTS_READ: &str = "accounts.read";
 pub const SCOPE_MAIL_READ: &str = "mail.read";
@@ -71,9 +71,10 @@ impl std::fmt::Debug for CyphtSession {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthKind {
     Session,
+    SsoSession,
     Pat,
 }
 
@@ -90,7 +91,7 @@ pub struct Principal {
 
 impl Principal {
     pub fn requires(&self, scope: &str) -> GatewayResult<()> {
-        if matches!(&self.auth_kind, AuthKind::Session) || self.scopes.iter().any(|s| s == scope) {
+        if matches!(&self.auth_kind, AuthKind::Session | AuthKind::SsoSession) || self.scopes.iter().any(|s| s == scope) {
             Ok(())
         } else {
             Err(GatewayError::PermissionDenied(scope.to_string()))
@@ -112,9 +113,9 @@ pub struct Vault {
 
 impl Vault {
     pub fn from_base64(value: &str) -> GatewayResult<Self> {
-        let bytes = STANDARD.decode(value).map_err(|_| {
+        let bytes = Zeroizing::new(STANDARD.decode(value).map_err(|_| {
             GatewayError::Configuration("GATEWAY_MASTER_KEY must be base64-encoded".into())
-        })?;
+        })?);
         if bytes.len() != 32 {
             return Err(GatewayError::Configuration(
                 "GATEWAY_MASTER_KEY must decode to exactly 32 bytes".into(),
@@ -136,8 +137,9 @@ impl Vault {
     }
 
     pub fn seal_json<T: Serialize>(&self, value: &T) -> GatewayResult<Vec<u8>> {
-        let plaintext =
-            serde_json::to_vec(value).map_err(|e| GatewayError::Internal(e.to_string()))?;
+        let plaintext = Zeroizing::new(
+            serde_json::to_vec(value).map_err(|e| GatewayError::Internal(e.to_string()))?
+        );
         let mut nonce = [0_u8; 24];
         OsRng.fill_bytes(&mut nonce);
         let ciphertext = self
@@ -154,10 +156,12 @@ impl Vault {
             return Err(GatewayError::Crypto);
         }
         let (nonce, ciphertext) = value.split_at(24);
-        let plaintext = self
-            .cipher
-            .decrypt(XNonce::from_slice(nonce), ciphertext)
-            .map_err(|_| GatewayError::Crypto)?;
+        let plaintext = Zeroizing::new(
+            self
+                .cipher
+                .decrypt(XNonce::from_slice(nonce), ciphertext)
+                .map_err(|_| GatewayError::Crypto)?
+        );
         serde_json::from_slice(&plaintext).map_err(|_| GatewayError::Crypto)
     }
 
@@ -216,13 +220,19 @@ impl AuthService {
         let hash = self.vault.token_hash(bearer)?;
         let now = now_unix();
         if let Some(session) = self.store.get_session(&hash, now)? {
+            let credential: Credential = self.vault.open_json(&session.credential_ciphertext)?;
+            let auth_kind = if credential.password.is_empty() {
+                AuthKind::SsoSession
+            } else {
+                AuthKind::Session
+            };
             return Ok(Principal {
                 username: session.username,
-                auth_kind: AuthKind::Session,
+                auth_kind,
                 auth_id: None,
                 scopes: vec!["*".into()],
                 account_allowlist: Vec::new(),
-                credential: self.vault.open_json(&session.credential_ciphertext)?,
+                credential,
                 cypht_session: self.vault.open_json(&session.cypht_session_ciphertext)?,
             });
         }
@@ -260,6 +270,11 @@ impl AuthService {
         account_allowlist: Vec<String>,
         expires_in_days: Option<u32>,
     ) -> GatewayResult<CreatedToken> {
+        if matches!(principal.auth_kind, AuthKind::SsoSession) || principal.credential.password.is_empty() {
+            return Err(GatewayError::Forbidden(
+                "creating a PAT from an SSO session requires re-authentication".into(),
+            ));
+        }
         if matches!(&principal.auth_kind, AuthKind::Pat) {
             principal.requires(SCOPE_TOKENS_MANAGE)?;
             for scope in &scopes {
@@ -596,5 +611,44 @@ mod tests {
             .unwrap();
         let pat = auth.authenticate(&created.token).unwrap();
         assert!(!auth.list_pats(&pat).unwrap().is_empty());
+    }
+    #[test]
+    fn sensitive_debug_is_redacted() {
+        let cred = Credential {
+            username: "alice".into(),
+            password: "super-secret-password".into(),
+        };
+        let session = CyphtSession {
+            hm_id: "secret-hm-id".into(),
+            hm_session: "secret-hm-session".into(),
+        };
+        assert!(!format!("{cred:?}").contains("super-secret-password"));
+        assert!(format!("{cred:?}").contains("[REDACTED]"));
+        assert!(!format!("{session:?}").contains("secret-hm-id"));
+        assert!(!format!("{session:?}").contains("secret-hm-session"));
+    }
+
+    #[test]
+    fn sso_principal_cannot_create_pat_without_reauth() {
+        let auth = test_auth();
+        let sso_user = Principal {
+            username: "bob".into(),
+            auth_kind: AuthKind::SsoSession,
+            auth_id: None,
+            scopes: vec!["*".into()],
+            account_allowlist: Vec::new(),
+            credential: Credential {
+                username: "bob".into(),
+                password: String::new(),
+            },
+            cypht_session: CyphtSession {
+                hm_id: "id".into(),
+                hm_session: "session".into(),
+            },
+        };
+        assert!(matches!(
+            auth.create_pat(&sso_user, "sso-token", vec![SCOPE_MAIL_READ.into()], Vec::new(), None),
+            Err(GatewayError::Forbidden(_))
+        ));
     }
 }

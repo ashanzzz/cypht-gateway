@@ -186,14 +186,20 @@ pub struct BridgeDownload {
 }
 
 #[derive(Debug, Deserialize)]
-struct BridgePing {
-    status: String,
-    bridge_version: String,
-    cypht_version: String,
+pub struct BridgePing {
+    pub status: String,
+    pub bridge_version: String,
+    pub cypht_version: String,
     #[serde(default)]
-    durable_user_config: bool,
+    pub durable_user_config: bool,
     #[serde(default)]
-    capabilities: Vec<String>,
+    pub capabilities: Vec<String>,
+}
+
+impl BridgePing {
+    pub fn supports(&self, capability: &str) -> bool {
+        self.capabilities.iter().any(|c| c == capability)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,10 +276,18 @@ impl CyphtClient {
         Ok(self.bridge_ping(session).await?.durable_user_config)
     }
 
-    async fn bridge_ping(&self, session: &CyphtSession) -> GatewayResult<BridgePing> {
+    pub async fn bridge_ping(&self, session: &CyphtSession) -> GatewayResult<BridgePing> {
         let ping: BridgePing = self.bridge_get(session, "ajax_gateway_ping", &[]).await?;
         validate_ping_versions(&ping)?;
         Ok(ping)
+    }
+
+    pub async fn require_capability(&self, session: &CyphtSession, capability: &str) -> GatewayResult<()> {
+        let ping = self.bridge_ping(session).await?;
+        if !ping.supports(capability) {
+            return Err(GatewayError::CapabilityUnavailable(capability.to_string()));
+        }
+        Ok(())
     }
 
     pub async fn accounts(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeAccount>> {
@@ -938,6 +952,8 @@ fn validate_ping_versions(ping: &BridgePing) -> GatewayResult<()> {
         upstream_cypht_version = %ping.cypht_version,
         bridge_version = %ping.bridge_version,
         baseline = %CYPHT_BASELINE_VERSION,
+        capabilities_count = ping.capabilities.len(),
+        capabilities = ?ping.capabilities,
         "Connected to upstream Cypht"
     );
     Ok(())
@@ -968,12 +984,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ping_capability_negotiation() {
+        let ping = BridgePing {
+            status: "ok".into(),
+            bridge_version: env!("CARGO_PKG_VERSION").into(),
+            cypht_version: CYPHT_BASELINE_VERSION.into(),
+            durable_user_config: true,
+            capabilities: vec!["mail.read.v1".into(), "user_config.durable.v1".into()],
+        };
+        assert!(ping.supports("mail.read.v1"));
+        assert!(ping.supports("user_config.durable.v1"));
+        assert!(!ping.supports("accounts.write.v1"));
+    }
+
+    #[test]
     fn ping_accepts_reviewed_cypht_and_other_upstream_versions() {
         let mut ping = BridgePing {
             status: "ok".into(),
             bridge_version: env!("CARGO_PKG_VERSION").into(),
             cypht_version: CYPHT_BASELINE_VERSION.into(),
             durable_user_config: false,
+            capabilities: Vec::new(),
         };
         assert!(validate_ping_versions(&ping).is_ok());
         let legacy: BridgePing = serde_json::from_str(

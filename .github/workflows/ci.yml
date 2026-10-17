@@ -97,12 +97,12 @@ jobs:
           tags: local/cypht-gateway:ci
           cache-from: type=gha,scope=gateway
           cache-to: type=gha,scope=gateway,mode=max
-      - name: Build Cypht 2.12.0 Bridge image
+      - name: Build Cypht 2.13.0 Bridge image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.cypht
-          build-args: CYPHT_IMAGE=cypht/cypht:2.12.0
+          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
           platforms: linux/amd64
           push: false
           tags: local/cypht-bridge:ci
@@ -113,7 +113,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.aio
-          build-args: CYPHT_IMAGE=cypht/cypht:2.12.0
+          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
           platforms: linux/amd64
           push: false
           tags: local/cypht-aio:ci
