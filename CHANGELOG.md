@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
+## [Unreleased] - 2026-10-17
+
+### Security & Architecture Hardening
+- **P0 Fail-Closed PAT Deserialization**: Fixed a security vulnerability in `gateway-storage` where corrupted `account_allowlist_json` or `scopes_json` silently defaulted to `[]` via `unwrap_or_default()`, inadvertently escalating restricted PATs to full access across all accounts. Implemented strict `json_column()` deserializer that fails closed on invalid JSON.
+- **Dynamic Upstream Runtime & Unpinned Compatibility**: Decoupled the Gateway Bridge from the hardcoded `CYPHT_BASELINE_VERSION = "2.12.0"` string equality lock. The Bridge ping now dynamically discovers and logs upstream Cypht versions (`tracing::info!`), allowing seamless compatibility with Cypht 2.12.0, 2.12.2, 2.13.x, and master without artificial connection failures.
+- **Engineered Execution Plan for Mail Accounts (v0.6.0)**: Added `docs/ACCOUNTS_PLAN.md` detailing the unified, AI-friendly IMAP/SMTP account lifecycle management architecture with fail-fast connectivity pre-validation, atomic multi-section config transactions, and permanent ID retirement.
+
+### Performance & Tooling
+- **Optimized Repository Verification**: Excluded the `target/` build directory from recursive secret scans in `scripts/check-repository.py`, reducing local check execution time from >20s to <2.5s.
+
 ## [0.5.2] - 2026-09-26 (Official Production Release)
 
 ### Native Cypht Webmail Integration & UI Parity

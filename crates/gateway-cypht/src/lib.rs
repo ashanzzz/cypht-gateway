@@ -932,11 +932,12 @@ fn validate_ping_versions(ping: &BridgePing) -> GatewayResult<()> {
             "bridge and Gateway versions do not match".into(),
         ));
     }
-    if ping.cypht_version != CYPHT_BASELINE_VERSION {
-        return Err(GatewayError::CapabilityUnavailable(format!(
-            "Cypht {CYPHT_BASELINE_VERSION} is required for this Bridge",
-        )));
-    }
+    tracing::info!(
+        upstream_cypht_version = %ping.cypht_version,
+        bridge_version = %ping.bridge_version,
+        baseline = %CYPHT_BASELINE_VERSION,
+        "Connected to upstream Cypht"
+    );
     Ok(())
 }
 fn attachment_too_large() -> GatewayError {
@@ -965,7 +966,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ping_accepts_reviewed_cypht_and_rejects_other_versions() {
+    fn ping_accepts_reviewed_cypht_and_other_upstream_versions() {
         let mut ping = BridgePing {
             status: "ok".into(),
             bridge_version: env!("CARGO_PKG_VERSION").into(),
@@ -978,11 +979,11 @@ mod tests {
         )
         .expect("legacy ping without storage flag should deserialize");
         assert!(!legacy.durable_user_config);
+        // Follow upstream dynamically without hard-rejecting newer releases
         ping.cypht_version = "2.12.2".into();
-        assert!(matches!(
-            validate_ping_versions(&ping),
-            Err(GatewayError::CapabilityUnavailable(_))
-        ));
+        assert!(validate_ping_versions(&ping).is_ok());
+        ping.cypht_version = "2.13.0".into();
+        assert!(validate_ping_versions(&ping).is_ok());
     }
     #[test]
     fn optional_module_unavailable_is_not_an_upstream_failure() {

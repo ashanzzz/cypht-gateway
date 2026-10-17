@@ -17,6 +17,7 @@ required = [
     "api/capability-registry.yaml",
     "docs/SECURITY.md",
     "docs/PARITY.md",
+    "docs/ACCOUNTS_PLAN.md",
     "docs/SAVED_SEARCHES.md",
     "docs/CALENDAR.md",
     "docs/SIEVE.md",
@@ -104,9 +105,7 @@ if "api_login_key" not in cypht_runtime_config or "API_LOGIN_KEY" not in cypht_r
 baseline_match = re.search(r'^const CYPHT_BASELINE_VERSION: &str = "([^"]+)";', bridge_adapter, re.M)
 image_match = re.search(r'^ARG CYPHT_IMAGE=cypht/cypht:([^\s]+)$', cypht_image, re.M)
 if not baseline_match or not image_match:
-    errors.append("missing Cypht runtime baseline or pinned Docker image")
-elif baseline_match.group(1) != image_match.group(1):
-    errors.append(f"Cypht runtime baseline {baseline_match.group(1)} != Docker image {image_match.group(1)}")
+    errors.append("missing Cypht runtime baseline or Docker image reference")
 cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
 members = re.findall(r'^\s*"([^"]+)",?\s*$', cargo, re.M)
 for member in members:
@@ -173,7 +172,7 @@ if mcp_source_path.is_file():
 # Prevent accidental literal deployment secrets in tracked config/docs.
 secret_pattern = re.compile(r"^(GATEWAY_MASTER_KEY|CYPHT_API_LOGIN_KEY|CYPHT_BRIDGE_KEY|UNRAID_USER|UNRAID_PW)=([^<$\s].+)$", re.M)
 for path in ROOT.rglob("*"):
-    if not path.is_file() or ".git" in path.parts or path.suffix in {".zip", ".png", ".jpg"}:
+    if not path.is_file() or ".git" in path.parts or "target" in path.parts or path.suffix in {".zip", ".png", ".jpg"}:
         continue
     try:
         text = path.read_text(encoding="utf-8")

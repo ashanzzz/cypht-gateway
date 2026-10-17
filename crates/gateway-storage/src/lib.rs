@@ -219,14 +219,12 @@ impl Store {
         ).map_err(storage_err)?;
         let rows = stmt
             .query_map(params![username], |row| {
-                let scopes_json: String = row.get(3)?;
-                let allowlist_json: String = row.get(4)?;
                 Ok(TokenMetadata {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     prefix: row.get(2)?,
-                    scopes: serde_json::from_str(&scopes_json).unwrap_or_default(),
-                    account_allowlist: serde_json::from_str(&allowlist_json).unwrap_or_default(),
+                    scopes: json_column(row, 3)?,
+                    account_allowlist: json_column(row, 4)?,
                     created_at: row.get(5)?,
                     expires_at: row.get(6)?,
                     last_used_at: row.get(7)?,
@@ -491,16 +489,25 @@ impl Store {
     }
 }
 
+fn json_column<T>(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    use rusqlite::types::Type;
+    let raw: String = row.get(index)?;
+    serde_json::from_str(&raw).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
+    })
+}
+
 fn decode_pat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredPat> {
-    let scopes_json: String = row.get(4)?;
-    let allowlist_json: String = row.get(5)?;
     Ok(StoredPat {
         id: row.get(0)?,
         username: row.get(1)?,
         name: row.get(2)?,
         prefix: row.get(3)?,
-        scopes: serde_json::from_str(&scopes_json).unwrap_or_default(),
-        account_allowlist: serde_json::from_str(&allowlist_json).unwrap_or_default(),
+        scopes: json_column(row, 4)?,
+        account_allowlist: json_column(row, 5)?,
         credential_ciphertext: row.get(6)?,
         cypht_session_ciphertext: row.get(7)?,
         created_at: row.get(8)?,
@@ -684,5 +691,22 @@ mod tests {
                 .request_hash,
             "def"
         );
+    }
+    #[test]
+    fn corrupt_pat_allowlist_fails_closed() {
+        let store = Store::open_memory().unwrap();
+        let pat = sample_pat();
+        store.put_pat("hash", &pat).unwrap();
+
+        let conn = store.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE gateway_pats SET account_allowlist_json = 'invalid-json' WHERE id = ?1",
+            params![pat.id],
+        )
+        .unwrap();
+        drop(conn);
+
+        assert!(store.get_pat_by_hash("hash", 500).is_err());
+        assert!(store.list_pats("alice").is_err());
     }
 }
