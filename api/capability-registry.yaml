@@ -1,153 +1,284 @@
 version: 1
+
+annotation_presets:
+  read:
+    read_only: true
+    destructive: false
+    idempotent: true
+    open_world: false
+  write:
+    read_only: false
+    destructive: false
+    idempotent: false
+    open_world: false
+  update:
+    read_only: false
+    destructive: false
+    idempotent: true
+    open_world: false
+  destructive:
+    read_only: false
+    destructive: true
+    idempotent: true
+    open_world: false
+  send:
+    read_only: false
+    destructive: false
+    idempotent: false
+    open_world: true
+
 capabilities:
   auth.login:
     api: "POST /api/v1/auth/login"
     cli: "cyphtctl login"
     risk: auth
+    backend_capabilities: []
   token.list:
     api: "GET /api/v1/tokens"
     cli: "cyphtctl tokens"
     risk: read
+    backend_capabilities: []
   token.create:
     api: "POST /api/v1/tokens"
     cli: "cyphtctl token-create"
     risk: credential
+    backend_capabilities: []
   token.revoke:
     api: "DELETE /api/v1/tokens/{id}"
     cli: "cyphtctl token-revoke"
     risk: credential
+    backend_capabilities: []
   identity.read:
     api: "GET /api/v1/me"
     cli: "cyphtctl me"
     risk: read
+    backend_capabilities: []
   audit.list:
     scope: audit.read
+    backend_capabilities: []
+    tool:
+      annotation: read
     api: "GET /api/v1/audit"
     cli: "cyphtctl audit"
     mcp: audit_list
     risk: read
   account.list:
     scope: accounts.read
+    backend_capabilities:
+      - accounts.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/accounts"
     cli: "cyphtctl accounts"
     mcp: mail_list_accounts
     risk: read
   contact.list:
     scope: contacts.read
+    backend_capabilities:
+      - contacts.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/contacts"
     cli: "cyphtctl contacts"
     mcp: contacts_list
     risk: read
   contact.search:
     scope: contacts.read
+    backend_capabilities:
+      - contacts.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/contacts"
     cli: "cyphtctl contacts --query"
     mcp: contacts_search
     risk: read
   contact.read:
     scope: contacts.read
+    backend_capabilities:
+      - contacts.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/contacts/{id}"
     cli: "cyphtctl contact-read"
     mcp: contacts_read
     risk: read
   contact.create:
     scope: contacts.write
+    backend_capabilities:
+      - contacts.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: write
     api: "POST /api/v1/contacts"
     cli: "cyphtctl contact-create"
     mcp: contacts_create
     risk: write
   contact.update:
     scope: contacts.write
+    backend_capabilities:
+      - contacts.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: update
     api: "PATCH /api/v1/contacts/{id}"
     cli: "cyphtctl contact-update"
     mcp: contacts_update
     risk: write
   contact.delete:
     scope: contacts.write
+    backend_capabilities:
+      - contacts.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: destructive
     api: "DELETE /api/v1/contacts/{id}"
     cli: "cyphtctl contact-delete --yes"
     mcp: contacts_delete
     risk: destructive
   sieve.status:
     scope: sieve.read
+    backend_capabilities:
+      - sieve.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/sieve/status"
     cli: "cyphtctl sieve-status"
     mcp: sieve_status
     risk: read
   calendar.list:
     scope: calendar.read
+    backend_capabilities:
+      - calendar.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/calendars"
     cli: "cyphtctl calendars"
     mcp: calendar_list
     risk: read
   calendar.events.list:
     scope: calendar.read
+    backend_capabilities:
+      - calendar.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/calendars/{calendar_id}/events"
     cli: "cyphtctl calendar-events"
     mcp: calendar_events_list
     risk: read
   calendar.event.create:
     scope: calendar.write
+    backend_capabilities:
+      - calendar.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: write
     api: "POST /api/v1/calendars/{calendar_id}/events"
     cli: "cyphtctl calendar-create"
     mcp: calendar_event_create
     risk: write
   calendar.event.delete:
     scope: calendar.write
+    backend_capabilities:
+      - calendar.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: destructive
     api: "DELETE /api/v1/calendars/{calendar_id}/events/{event_id}"
     cli: "cyphtctl calendar-delete --yes"
     mcp: calendar_event_delete
     risk: destructive
   saved_search.list:
     scope: searches.read
+    backend_capabilities:
+      - saved_searches.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/saved-searches"
     cli: "cyphtctl saved-searches"
     mcp: saved_searches_list
     risk: read
   saved_search.read:
     scope: searches.read
+    backend_capabilities:
+      - saved_searches.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/saved-searches/{id}"
     cli: "cyphtctl saved-search-read"
     mcp: saved_searches_read
     risk: read
   saved_search.create:
     scope: searches.write
+    backend_capabilities:
+      - saved_searches.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: write
     api: "POST /api/v1/saved-searches"
     cli: "cyphtctl saved-search-create"
     mcp: saved_searches_create
     risk: write
   saved_search.update:
     scope: searches.write
+    backend_capabilities:
+      - saved_searches.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: update
     api: "PATCH /api/v1/saved-searches/{id}"
     cli: "cyphtctl saved-search-update"
     mcp: saved_searches_update
     risk: write
   saved_search.delete:
     scope: searches.write
+    backend_capabilities:
+      - saved_searches.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: destructive
     api: "DELETE /api/v1/saved-searches/{id}"
     cli: "cyphtctl saved-search-delete --yes"
     mcp: saved_searches_delete
     risk: destructive
   tag.list:
     scope: tags.read
+    backend_capabilities:
+      - tags.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/tags"
     cli: "cyphtctl tags list"
     mcp: tags_list
     risk: read
   tag.create:
     scope: tags.write
+    backend_capabilities:
+      - tags.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: write
     api: "POST /api/v1/tags"
     cli: "cyphtctl tags create"
     mcp: tags_create
     risk: write
   tag.update:
     scope: tags.write
+    backend_capabilities:
+      - tags.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: update
     api: "PATCH /api/v1/tags/{id}"
     cli: "cyphtctl tags update"
     mcp: tags_update
     risk: write
   tag.delete:
     scope: tags.write
+    backend_capabilities:
+      - tags.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: destructive
     api: "DELETE /api/v1/tags/{id}"
     cli: "cyphtctl tags delete --yes"
     mcp: tags_delete
@@ -155,6 +286,11 @@ capabilities:
   mail.tag.add:
     scope: tags.write
     additional_scopes: [mail.read]
+    backend_capabilities:
+      - tags.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: update
     api: "POST /api/v1/messages/{id}/tags/{tag_id}"
     cli: "cyphtctl tag add"
     mcp: mail_add_tag
@@ -162,55 +298,123 @@ capabilities:
   mail.tag.remove:
     scope: tags.write
     additional_scopes: [mail.read]
+    backend_capabilities:
+      - tags.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: destructive
     api: "DELETE /api/v1/messages/{id}/tags/{tag_id}"
     cli: "cyphtctl tag remove --yes"
     mcp: mail_remove_tag
     risk: destructive
 
+  feed.list:
+    scope: feeds.read
+    backend_capabilities:
+      - feeds.read.v1
+    tool:
+      annotation: read
+    api: "GET /api/v1/feeds"
+    cli: "cyphtctl feeds"
+    mcp: feeds_list
+    risk: read
+  feed.read:
+    scope: feeds.read
+    backend_capabilities:
+      - feeds.read.v1
+    tool:
+      annotation: read
+    api: "GET /api/v1/feeds/{id}"
+    cli: "cyphtctl feed-read"
+    mcp: feeds_get
+    risk: read
+
   profile.list:
     scope: mail.send
+    backend_capabilities:
+      - accounts.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/profiles"
     cli: "cyphtctl profiles"
     mcp: mail_list_profiles
     risk: read
   mailbox.list:
     scope: accounts.read
+    backend_capabilities:
+      - mail.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/accounts/{id}/mailboxes"
     cli: "cyphtctl mailboxes"
     mcp: mail_list_mailboxes
     risk: read
   mail.list:
     scope: mail.read
+    backend_capabilities:
+      - mail.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/messages"
     cli: "cyphtctl inbox"
     mcp: mail_list
     risk: read
   mail.search:
     scope: mail.search
+    backend_capabilities:
+      - mail.read.v1
+    tool:
+      annotation: read
     api: "POST /api/v1/messages/search"
     cli: "cyphtctl search"
     mcp: mail_search
     risk: read
   mail.read:
     scope: mail.read
+    backend_capabilities:
+      - mail.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/messages/{id}"
     cli: "cyphtctl read"
     mcp: mail_read
     risk: read
+  attachment.list:
+    scope: mail.read
+    backend_capabilities:
+      - mail.read.v1
+    tool:
+      annotation: read
+    api: "GET /api/v1/messages/{id}"
+    cli: "cyphtctl read"
+    mcp: mail_list_attachments
+    risk: read
   attachment.read:
     scope: attachments.read
+    backend_capabilities:
+      - mail.read.v1
+    tool:
+      annotation: read
     api: "GET /api/v1/attachments/{id}"
     cli: "cyphtctl attachment"
     mcp: mail_get_attachment
     risk: read
   attachment.upload:
     scope: mail.send
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: write
     api: "POST /api/v1/uploads"
     cli: "cyphtctl upload"
     mcp: mail_upload_attachment
     risk: write
   mail.send:
     scope: mail.send
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: send
     api: "POST /api/v1/messages/send"
     cli: "cyphtctl send"
     mcp: mail_send
@@ -218,6 +422,10 @@ capabilities:
     idempotency_required: true
   mail.draft:
     scope: mail.send
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: write
     api: "POST /api/v1/drafts"
     cli: "cyphtctl draft"
     mcp: mail_create_draft
@@ -226,6 +434,10 @@ capabilities:
   mail.reply:
     scope: mail.send
     additional_scopes: [mail.read]
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: send
     api: "POST /api/v1/messages/{id}/reply"
     cli: "cyphtctl reply"
     mcp: mail_reply
@@ -234,6 +446,10 @@ capabilities:
   mail.forward:
     scope: mail.send
     additional_scopes: [mail.read]
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: send
     api: "POST /api/v1/messages/{id}/forward"
     cli: "cyphtctl forward"
     mcp: mail_forward
@@ -241,24 +457,40 @@ capabilities:
     idempotency_required: true
   mail.modify:
     scope: mail.modify
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: update
     api: "PATCH /api/v1/messages/{id}"
     cli: "cyphtctl mark-read|mark-unread|flag|unflag"
     mcp: mail_update
     risk: write
   mail.move:
     scope: mail.modify
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: update
     api: "POST /api/v1/messages/{id}/move"
     cli: "cyphtctl move"
     mcp: mail_move
     risk: write
   mail.archive:
     scope: mail.modify
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: update
     api: "POST /api/v1/messages/{id}/archive"
     cli: "cyphtctl archive"
     mcp: mail_archive
     risk: write
   mail.delete:
     scope: mail.delete
+    backend_capabilities:
+      - mail.write.v1
+    tool:
+      annotation: destructive
     api: "DELETE /api/v1/messages/{id}"
     cli: "cyphtctl delete --yes"
     mcp: mail_delete

@@ -366,8 +366,9 @@ impl CyphtClient {
         page: &str,
         payload: &serde_json::Value,
     ) -> GatewayResult<T> {
-        self.require_capability(session, capability).await?;
-        self.bridge_post_with_config_key(session, Some(credential), true, page, payload)
+        self.require_capabilities(session, &[capability, CAP_USER_CONFIG_DURABLE])
+            .await?;
+        self.bridge_post_with_config_key(session, Some(credential), page, payload)
             .await
     }
 
@@ -945,7 +946,7 @@ impl CyphtClient {
         page: &str,
         payload: &serde_json::Value,
     ) -> GatewayResult<T> {
-        self.bridge_post_with_config_key(session, None, false, page, payload)
+        self.bridge_post_with_config_key(session, None, page, payload)
             .await
     }
 
@@ -953,7 +954,6 @@ impl CyphtClient {
         &self,
         session: &CyphtSession,
         credential: Option<&Credential>,
-        require_storage: bool,
         page: &str,
         payload: &serde_json::Value,
     ) -> GatewayResult<T> {
@@ -964,11 +964,6 @@ impl CyphtClient {
         if let Some(credential) = credential {
             let ping = self.cached_or_fetch_ping(session).await?;
             validate_ping_versions(&ping)?;
-            if require_storage && !ping.durable_user_config {
-                return Err(GatewayError::CapabilityUnavailable(
-                    "durable user-config writes".into(),
-                ));
-            }
             if ping.durable_user_config {
                 headers.insert(
                     "x-cypht-gateway-config-key",

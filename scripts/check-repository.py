@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import yaml
+
 import re
 import sys
 from pathlib import Path
@@ -241,19 +243,30 @@ if api_source_path.is_file():
         if f'"/api/v1{route_path}"' not in api_source:
             errors.append(f"capability route missing from gateway-api source: {method} {path}")
 
-# Every MCP tool declared in the capability registry must exist in the MCP source.
+# PR6 Operation Catalog and MCP Tool invariants
 mcp_source_path = ROOT / "crates/gateway-mcp/src/lib.rs"
 if mcp_source_path.is_file():
     mcp_source = mcp_source_path.read_text(encoding="utf-8")
     if "planned_mcp:" in registry:
         errors.append("capability registry still contains planned_mcp entries; v0.4 requires real mcp mappings")
-    for tool in re.findall(r"^\s*mcp:\s*([A-Za-z0-9_]+)\s*$", registry, re.M):
-        if f'name = "{tool}"' not in mcp_source:
-            errors.append(f"registry MCP tool missing from source: {tool}")
+
+    catalog_data = yaml.safe_load(registry)
+
+    # 1. Bi-directional MCP tool set exact equality
+    catalog_mcp_tools = set(re.findall(r"^\s*mcp:\s*([A-Za-z0-9_]+)\s*$", registry, re.M))
+    mcp_source_tools = set(re.findall(r"#\[tool\([^)]*?name\s*=\s*\"([^\"]+)\"", mcp_source))
+    missing_in_source = catalog_mcp_tools - mcp_source_tools
+    missing_in_catalog = mcp_source_tools - catalog_mcp_tools
+    if missing_in_source:
+        errors.append("MCP tools in catalog but missing in source: " + ", ".join(sorted(missing_in_source)))
+    if missing_in_catalog:
+        errors.append("MCP tools in source but missing in catalog: " + ", ".join(sorted(missing_in_catalog)))
+
+    # 2. Bi-directional Write tool set exact equality
     write_tools = set()
     for capability in re.split(r"(?m)^  [A-Za-z][A-Za-z0-9_.]*:\s*$", registry)[1:]:
-        tool = re.search(r"(?m)^    mcp:\s*([A-Za-z0-9_]+)\s*$", capability)
-        risk = re.search(r"(?m)^    risk:\s*([a-z_]+)\s*$", capability)
+        tool = re.search(r"(?m)^\s+mcp:\s*([A-Za-z0-9_]+)\s*$", capability)
+        risk = re.search(r"(?m)^\s+risk:\s*([a-z_]+)\s*$", capability)
         if tool and risk and risk.group(1) in {"write", "destructive", "external_write"}:
             write_tools.add(tool.group(1))
     gated_tools = re.search(r"(?s)const WRITE_TOOLS: &\[&str\] = &\[(.*?)\];", mcp_source)
@@ -261,6 +274,35 @@ if mcp_source_path.is_file():
     if write_tools != registered_gates:
         errors.append("MCP write-tool gate differs from capability registry: " +
                       ", ".join(sorted(write_tools ^ registered_gates)))
+
+    # 3. Tool annotation presets and risk consistency
+    valid_presets = set(catalog_data.get("annotation_presets", {}).keys())
+    expected_presets = {"read", "write", "update", "destructive", "send"}
+    if valid_presets != expected_presets:
+        errors.append("catalog annotation presets differ from standard: " + ", ".join(sorted(valid_presets ^ expected_presets)))
+
+    for op_name, op in catalog_data.get("capabilities", {}).items():
+        if "mcp" in op:
+            tool_info = op.get("tool", {})
+            annotation = tool_info.get("annotation") if isinstance(tool_info, dict) else None
+            if not annotation or annotation not in valid_presets:
+                tool_name = op["mcp"]
+                errors.append(f"operation {op_name} ({tool_name}) has invalid or missing tool annotation: {annotation}")
+            risk = op.get("risk")
+            if risk == "read" and annotation != "read":
+                errors.append(f"operation {op_name} has risk read but annotation {annotation}")
+            elif risk == "destructive" and annotation != "destructive":
+                errors.append(f"operation {op_name} has risk destructive but annotation {annotation}")
+            elif risk == "external_write" and annotation != "send":
+                errors.append(f"operation {op_name} has risk external_write but annotation {annotation}")
+            elif risk == "write" and annotation not in {"write", "update"}:
+                errors.append(f"operation {op_name} has risk write but annotation {annotation}")
+
+        # 4. Backend capabilities consistency
+        backend_caps = op.get("backend_capabilities", [])
+        for cap in backend_caps:
+            if cap not in rust_caps:
+                errors.append(f"operation {op_name} lists unknown backend capability: {cap}")
 
 # Prevent accidental literal deployment secrets in tracked config/docs.
 secret_pattern = re.compile(r"^(GATEWAY_MASTER_KEY|CYPHT_API_LOGIN_KEY|CYPHT_BRIDGE_KEY|UNRAID_USER|UNRAID_PW)=([^<$\s].+)$", re.M)

@@ -4,6 +4,12 @@ All notable changes to this project will be documented here. The project follows
 
 ## [Unreleased] - 2026-10-17
 
+### Operation Catalog & Tool Annotations (PR 6)
+- **Unified Operation Catalog (`api/capability-registry.yaml`)**: Extended capability registry with granular `backend_capabilities` mappings and 5 standardized ToolAnnotation presets (`read`, `write`, `update`, `destructive`, `send`), establishing a single source of truth without framework codegen overhead.
+- **Bi-directional MCP Catalog Invariant**: Added missing `mail_list_attachments`, `feeds_list`, and `feeds_get` to the catalog. Enforced exact bi-directional set equality in `scripts/check-repository.py` between catalog MCP tools (42) and MCP source tools (42).
+- **Exact Risk & Annotation Consistency**: Enforced that `WRITE_TOOLS` gate matches catalog write/destructive risks exactly, and that every tool annotation strictly matches its operation risk profile.
+- **Durability Policy Decoupled from Transport**: Shifted `user_config.durable.v1` validation into `post_user_config_with_capability` at the capability layer, removing business durability logic from raw bridge POST transport helpers.
+
 ### Build & CI Fixes
 - **P0 CI Dependency Fixes**: Added `tracing.workspace = true` to both `crates/gateway-cypht/Cargo.toml` and `crates/gateway-domain/Cargo.toml`, resolving module resolution errors and container build failures in GitHub Actions.
 - **Granular Capability Enforcement**: Split capability contracts into explicit `.read.v1` and `.write.v1` domains across both PHP Bridge and Rust adapter. Introduced private checked primitives (`get_with_capability`, `post_user_config_with_capability`, `write_with_capability`) in `gateway-cypht`, guaranteeing 100% adapter operation coverage without developer omission.
