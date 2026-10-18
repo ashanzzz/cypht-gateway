@@ -54,4 +54,4 @@ if "api_login" in default_modules:
     raise SystemExit("reviewed Cypht default unexpectedly enables api_login")
 
 print(f"Cypht module matrix ok: {len(source_modules)} modules")
-print("Cypht 2.12.0 default module list verified; api_login and gateway require explicit enablement")
+print("Cypht default module list verified; api_login and gateway require explicit enablement")

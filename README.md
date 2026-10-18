@@ -215,7 +215,7 @@ For Unraid, copy `deploy/unraid.env.example` to the ignored `deploy/unraid.env`,
 
 
 
-`Dockerfile` builds the Gateway image. `docker/Dockerfile.cypht` builds the private Bridge image on Cypht `2.12.0`. CI builds both images. A release tag publishes versioned images to GHCR. See `docs/RELEASING.md` for version and tag steps.
+`Dockerfile` builds the Gateway image. `docker/Dockerfile.cypht` builds the private Bridge image on Cypht `2.13.0`. CI runs the primary Cypht 2.13 source/container gates plus a Cypht 2.12 compatibility smoke. After CI succeeds on `main`, the image workflow publishes full-SHA Gateway, Bridge, and AIO identities; release tags promote those exact identities instead of rebuilding them. See `docs/RELEASING.md` for the authoritative image-bundle and alias rules.
 
 ## Versioning
 

@@ -165,9 +165,11 @@ Never call a workflow green while its status is not `completed` with conclusion 
 
 Do not infer that a release is coherent merely because every image eventually built successfully.
 
-Immutable commit-SHA image identities are authoritative.
+Immutable full commit-SHA image identities are authoritative. A full-SHA image identity must not be overwritten by a rerun; build workflows must reuse an existing identity rather than rebuild it under the same tag.
 
-Mutable tags such as `edge`, semantic-version aliases, and `latest` must only be promoted after all required artifacts for the same commit have succeeded.
+Mutable tags such as `edge`, semantic-version aliases, and `latest` must only be promoted after all required artifacts for the same commit have succeeded. The CI-gated image workflow is the sole owner of immutable SHA images and `edge`; the tag-triggered Release workflow is the sole owner of release aliases. Never publish the same mutable release alias from multiple workflows.
+
+Cross-package GHCR alias updates are coordinated writes, not a registry transaction. Never describe them as atomic. If an alias update is interrupted, the authoritative release identity is the full-SHA image set recorded in `image-bundle.json`.
 
 `latest` is release-only and must never be moved by an ordinary `main` branch push.
 

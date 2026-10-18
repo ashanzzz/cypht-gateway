@@ -1,8 +1,8 @@
-# Cypht 2.12.0 module-to-Gateway map
+# Cypht 2.12.0 compatibility module-to-Gateway map
 
 ## Evidence and scope
 
-This map uses the official Cypht `v2.12.0` source archive reviewed for this project. The archive SHA-256 is `44CF3A67438ED1D0921DBC1CAB58A6939B1A09667156984CA193DBCE57A24605`. A module listed here may be disabled in the Unraid container. This source map does not prove that a module is installed, enabled, configured, or safe at runtime.
+This map uses the official Cypht `v2.12.0` source archive reviewed for this project. The archive SHA-256 is `44CF3A67438ED1D0921DBC1CAB58A6939B1A09667156984CA193DBCE57A24605`. CI also runs the same module-inventory invariant against pinned Cypht `v2.13.0`, which is the primary behavioral source baseline; Cypht 2.12.0 remains the compatibility baseline. A module listed here may be disabled in the Unraid container. This source map does not prove that a module is installed, enabled, configured, or safe at runtime.
 
 Cypht 2.12.0 source defaults `CYPHT_MODULES` to `core,contacts,local_contacts,feeds,imap,smtp,account,idle_timer,calendar,themes,nux,developer,history,saved_searches,advanced_search,highlights,profiles,inline_message,imap_folders,keyboard_shortcuts,tags,brute_force`. The default excludes `api_login`. The Gateway Bridge is a custom module and must be added to the deployed module list.
 

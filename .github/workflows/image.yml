@@ -1,22 +1,33 @@
 name: Container Images
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: read
   packages: write
   id-token: write
 
+env:
+  GATEWAY_IMAGE: ghcr.io/${{ github.repository }}
+  CYPHT_BRIDGE_IMAGE: ghcr.io/${{ github.repository }}-cypht-bridge
+  AIO_IMAGE: ghcr.io/${{ github.repository }}-aio
+  SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+
 jobs:
   gateway:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
       - run: python3 scripts/check-version.py
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -25,30 +36,47 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check immutable Gateway image
+        id: existing
+        shell: bash
+        run: |
+          if docker buildx imagetools inspect "${GATEWAY_IMAGE}:sha-${SOURCE_SHA}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - id: meta
+        if: steps.existing.outputs.exists != 'true'
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.GATEWAY_IMAGE }}
           tags: |
-            type=sha,prefix=sha-
-      - uses: docker/build-push-action@v6
+            type=raw,value=sha-${{ env.SOURCE_SHA }}
+      - if: steps.existing.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: BUILD_TIME=${{ github.event.head_commit.timestamp }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: BUILD_TIME=${{ github.event.workflow_run.created_at }}
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,scope=gateway,mode=max
           provenance: mode=max
           sbom: true
 
   cypht-with-bridge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -56,28 +84,48 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check immutable Cypht Bridge image
+        id: existing
+        shell: bash
+        run: |
+          if docker buildx imagetools inspect "${CYPHT_BRIDGE_IMAGE}:sha-${SOURCE_SHA}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - id: meta
+        if: steps.existing.outputs.exists != 'true'
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-cypht
+          images: ${{ env.CYPHT_BRIDGE_IMAGE }}
           tags: |
-            type=sha,prefix=sha-
-      - uses: docker/build-push-action@v6
+            type=raw,value=sha-${{ env.SOURCE_SHA }}
+      - if: steps.existing.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.cypht
+          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cypht-bridge
+          cache-to: type=gha,scope=cypht-bridge,mode=max
           provenance: mode=max
           sbom: true
 
   cypht-aio:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -85,16 +133,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check immutable All-in-One image
+        id: existing
+        shell: bash
+        run: |
+          if docker buildx imagetools inspect "${AIO_IMAGE}:sha-${SOURCE_SHA}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - id: meta
+        if: steps.existing.outputs.exists != 'true'
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-aio
+          images: ${{ env.AIO_IMAGE }}
           tags: |
-            type=sha,prefix=sha-
-      - uses: docker/build-push-action@v6
+            type=raw,value=sha-${{ env.SOURCE_SHA }}
+      - if: steps.existing.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.aio
+          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -102,41 +162,50 @@ jobs:
           cache-from: type=gha,scope=cypht-aio
           cache-to: type=gha,scope=cypht-aio,mode=max
 
-  promote:
+  promote-edge:
     needs: [gateway, cypht-with-bridge, cypht-aio]
     runs-on: ubuntu-latest
+    concurrency:
+      group: cypht-gateway-edge-promotion
+      cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Promote mutable tags
+      - name: Check current main head
+        id: current
         shell: bash
         run: |
-          SHA_TAG="sha-${GITHUB_SHA}"
-          REPOS=(
-            "ghcr.io/${GITHUB_REPOSITORY}"
-            "ghcr.io/${GITHUB_REPOSITORY}-cypht"
-            "ghcr.io/${GITHUB_REPOSITORY}-aio"
-          )
-          
-          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
-            for repo in "${REPOS[@]}"; do
-              echo "Promoting edge tag for ${repo}"
-              docker buildx imagetools create --tag "${repo}:edge" "${repo}:${SHA_TAG}"
-            done
+          git fetch --no-tags origin main
+          if [[ "$(git rev-parse origin/main)" == "${SOURCE_SHA}" ]]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping stale edge promotion for ${SOURCE_SHA}"
           fi
-
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            TAG_NAME="${GITHUB_REF_NAME}"
-            for repo in "${REPOS[@]}"; do
-              echo "Promoting release tag for ${repo}: ${TAG_NAME}"
-              docker buildx imagetools create --tag "${repo}:${TAG_NAME}" "${repo}:${SHA_TAG}"
-              if [[ "${TAG_NAME}" != *-* ]]; then
-                echo "Promoting latest tag for ${repo}"
-                docker buildx imagetools create --tag "${repo}:latest" "${repo}:${SHA_TAG}"
-              fi
-            done
-          fi
+      - name: Preflight immutable image bundle
+        if: steps.current.outputs.value == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for repo in "${GATEWAY_IMAGE}" "${CYPHT_BRIDGE_IMAGE}" "${AIO_IMAGE}"; do
+            docker buildx imagetools inspect "${repo}:sha-${SOURCE_SHA}" >/dev/null
+          done
+      - name: Promote coordinated edge aliases
+        if: steps.current.outputs.value == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for repo in "${GATEWAY_IMAGE}" "${CYPHT_BRIDGE_IMAGE}" "${AIO_IMAGE}"; do
+            echo "Promoting ${repo}:edge from sha-${SOURCE_SHA}"
+            docker buildx imagetools create \
+              --tag "${repo}:edge" \
+              "${repo}:sha-${SOURCE_SHA}"
+          done

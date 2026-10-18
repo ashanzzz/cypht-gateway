@@ -27,6 +27,7 @@ required = [
     "docs/VALIDATION.md",
     "deploy/nginx/gateway-edge.conf",
     ".github/workflows/ci.yml",
+    ".github/workflows/image.yml",
     ".github/workflows/release.yml",
     "scripts/check-cypht-matrix.py",
     "scripts/run-local.ps1",
@@ -88,6 +89,34 @@ if compose_path.is_file():
     if 'GATEWAY_EDGE_HOST_PORT:-8088' not in compose:
         errors.append("edge profile must publish the configured host port with 8088 default")
 
+# Container publication invariants: one immutable build owner, one release alias owner.
+image_workflow_path = ROOT / ".github/workflows/image.yml"
+release_workflow_path = ROOT / ".github/workflows/release.yml"
+if image_workflow_path.is_file() and release_workflow_path.is_file():
+    image_workflow = image_workflow_path.read_text(encoding="utf-8")
+    release_workflow = release_workflow_path.read_text(encoding="utf-8")
+    full_sha_tag = "type=raw,value=sha-${{ env.SOURCE_SHA }}"
+    bridge_package = "ghcr.io/${{ github.repository }}-cypht-bridge"
+
+    if "workflow_run:" not in image_workflow or 'workflows: ["CI"]' not in image_workflow:
+        errors.append("Container Images must be triggered from the completed CI workflow")
+    if "github.event.workflow_run.conclusion == 'success'" not in image_workflow:
+        errors.append("Container Images must require a successful CI conclusion")
+    if 'tags: ["v*"]' in image_workflow:
+        errors.append("Container Images must not publish release-tag aliases")
+    if image_workflow.count(full_sha_tag) != 3:
+        errors.append("all three image builds must publish full Git-SHA identities")
+    if "type=sha,prefix=sha-" in image_workflow:
+        errors.append("short SHA image tags are forbidden; use the full Git SHA")
+    if bridge_package not in image_workflow or bridge_package not in release_workflow:
+        errors.append("Container and Release workflows must use the canonical -cypht-bridge package")
+    if "docker/build-push-action@" in release_workflow:
+        errors.append("Release must promote existing immutable images, not rebuild containers")
+    if "image-bundle.json" not in release_workflow:
+        errors.append("Release must publish the authoritative immutable image bundle manifest")
+    if "needs.validate.outputs.source_sha" not in release_workflow or "sha-${SOURCE_SHA}" not in release_workflow:
+        errors.append("Release must resolve image identities from the annotated tag commit SHA")
+
 root_version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 bridge_version_file = ROOT / "cypht-module/gateway/VERSION"
 if bridge_version_file.is_file():
@@ -107,6 +136,29 @@ baseline_match = re.search(r'^const CYPHT_BASELINE_VERSION: &str = "([^"]+)";', 
 image_match = re.search(r'^ARG CYPHT_IMAGE=cypht/cypht:([^\s]+)$', cypht_image, re.M)
 if not baseline_match or not image_match:
     errors.append("missing Cypht runtime baseline or Docker image reference")
+elif baseline_match.group(1) != image_match.group(1):
+    errors.append(
+        f"Rust Cypht baseline {baseline_match.group(1)!r} != Docker baseline {image_match.group(1)!r}"
+    )
+
+ci_workflow_path = ROOT / ".github/workflows/ci.yml"
+if ci_workflow_path.is_file() and release_workflow_path.is_file():
+    ci_workflow = ci_workflow_path.read_text(encoding="utf-8")
+    release_workflow = release_workflow_path.read_text(encoding="utf-8")
+    pin_pattern = re.compile(
+        r"repository:\s*cypht-org/cypht\s+ref:\s*([0-9a-f]{40})", re.M
+    )
+    ci_pin = pin_pattern.search(ci_workflow)
+    release_pin = pin_pattern.search(release_workflow)
+    if not ci_pin or not release_pin:
+        errors.append("CI and Release must pin the primary Cypht source to an exact commit")
+    elif ci_pin.group(1) != release_pin.group(1):
+        errors.append("CI and Release use different pinned primary Cypht source commits")
+    if baseline_match:
+        baseline = baseline_match.group(1)
+        for workflow_name, workflow in (("CI", ci_workflow), ("Release", release_workflow)):
+            if f"Cypht {baseline} primary" not in workflow:
+                errors.append(f"{workflow_name} does not identify Cypht {baseline} as the primary source baseline")
 
 # Capability producer vs consumer check
 rust_caps = set(
@@ -148,6 +200,7 @@ for name in sorted(extra):
 for name in sorted(canonical.keys() & mirror.keys()):
     if canonical[name].read_bytes() != mirror[name].read_bytes():
         errors.append(f"Gateway PHP mirror drift: {name}")
+
 cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
 members = re.findall(r'^\s*"([^"]+)",?\s*$', cargo, re.M)
 for member in members:
@@ -162,8 +215,6 @@ for method, path in re.findall(r'api:\s*"(GET|POST|PATCH|PUT|DELETE) (/api/v1/[^
     openapi_norm = re.sub(r"\{[^}]+\}", "{id}", openapi)
     if normalized not in openapi_norm:
         errors.append(f"capability route missing from OpenAPI: {method} {path}")
-
-
 
 scope_enum = re.search(
     r"(?ms)^    Scope:\n      type: string\n      enum: \[([^]]+)\]",

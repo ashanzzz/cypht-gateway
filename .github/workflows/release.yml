@@ -7,13 +7,35 @@ on:
 permissions:
   contents: read
 
+env:
+  GATEWAY_IMAGE: ghcr.io/${{ github.repository }}
+  CYPHT_BRIDGE_IMAGE: ghcr.io/${{ github.repository }}-cypht-bridge
+  AIO_IMAGE: ghcr.io/${{ github.repository }}-aio
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.release-ref.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Resolve annotated release commit
+        id: release-ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(git cat-file -t "${GITHUB_REF_NAME}")" != "tag" ]]; then
+            echo "Release tags must be annotated tags" >&2
+            exit 1
+          fi
+          SOURCE_SHA="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          if [[ "$(git rev-parse HEAD)" != "${SOURCE_SHA}" ]]; then
+            echo "Checked-out release commit does not match annotated tag" >&2
+            exit 1
+          fi
+          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -27,24 +49,45 @@ jobs:
       - run: python3 scripts/check-repository.py
       - run: python3 scripts/check-frontend.py
       - run: find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
-      - name: Cypht 2.13.0 source tests
+      - name: Bridge contract and capability tests
         run: |
           php tests/bridge_contract.php
           php tests/bridge_capabilities.php
+          php tests/bridge_persistence_guard.php
+      - name: Checkout pinned Cypht 2.13.0 source
+        uses: actions/checkout@v4
+        with:
+          repository: cypht-org/cypht
+          ref: 4caf0a64a4d4b1b2756ea05e3883aacac16babc2
+          path: .ci/cypht-2.13.0
+          persist-credentials: false
+      - name: Cypht 2.13.0 primary source tests
+        env:
+          CYPHT_SOURCE_PATH: ${{ github.workspace }}/.ci/cypht-2.13.0
+        run: |
+          python3 scripts/check-cypht-matrix.py
+          php tests/cypht_contacts_repo.php
+          php tests/bridge_ping.php
+          php tests/cypht_api_login_config.php
+          php tests/cypht_tags_repo.php
+          php tests/bridge_tags.php
+          php tests/cypht_saved_searches_repo.php
+          php tests/bridge_saved_searches.php
+          php tests/bridge_calendar.php
+          php tests/bridge_sieve_status.php
+          php tests/cypht_user_config_persistence.php
+      - name: Cypht 2.12.0 compatibility smoke
+        run: |
           curl --fail --location --retry 3 https://codeload.github.com/cypht-org/cypht/zip/refs/tags/v2.12.0 -o /tmp/cypht-v2.12.0.zip
           echo "44cf3a67438ed1d0921dbc1cab58a6939b1a09667156984ca193dbce57a24605  /tmp/cypht-v2.12.0.zip" | sha256sum -c -
           unzip -q /tmp/cypht-v2.12.0.zip -d /tmp
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 python3 scripts/check-cypht-matrix.py
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_contacts_repo.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_ping.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_api_login_config.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_tags_repo.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_tags.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_saved_searches_repo.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_saved_searches.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_calendar.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_sieve_status.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_user_config_persistence.php
+          export CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0
+          python3 scripts/check-cypht-matrix.py
+          php tests/bridge_ping.php
+          php tests/cypht_api_login_config.php
+          php tests/cypht_contacts_repo.php
+          php tests/bridge_tags.php
+          php tests/cypht_user_config_persistence.php
       - name: Reject missing or shared Cypht Bridge keys
         run: |
           sh -n docker/cypht-gateway-entrypoint.sh
@@ -110,96 +153,135 @@ jobs:
             *.zip
           if-no-files-found: error
 
-  container-images:
+  verify-container-images:
     needs: validate
     runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
     permissions:
       contents: read
-      packages: write
+      packages: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Gateway image metadata
-        id: gateway-meta
-        uses: docker/metadata-action@v5
+      - name: Verify immutable image bundle and capture digests
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA_TAG="sha-${SOURCE_SHA}"
+          GATEWAY_REF="${GATEWAY_IMAGE}:${SHA_TAG}"
+          BRIDGE_REF="${CYPHT_BRIDGE_IMAGE}:${SHA_TAG}"
+          AIO_REF="${AIO_IMAGE}:${SHA_TAG}"
+
+          inspect_digest() {
+            local ref="$1"
+            local digest
+            digest="$(docker buildx imagetools inspect "$ref" | awk '/^Digest:/ {print $2; exit}')"
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Could not resolve immutable digest for $ref" >&2
+              return 1
+            fi
+            printf '%s' "$digest"
+          }
+
+          GATEWAY_DIGEST="$(inspect_digest "$GATEWAY_REF")"
+          BRIDGE_DIGEST="$(inspect_digest "$BRIDGE_REF")"
+          AIO_DIGEST="$(inspect_digest "$AIO_REF")"
+
+          export GATEWAY_REF BRIDGE_REF AIO_REF
+          export GATEWAY_DIGEST BRIDGE_DIGEST AIO_DIGEST
+          python3 - <<'PY'
+          import json
+          import os
+
+          bundle = {
+              "git_sha": os.environ["SOURCE_SHA"],
+              "images": {
+                  "gateway": {
+                      "ref": os.environ["GATEWAY_REF"],
+                      "digest": os.environ["GATEWAY_DIGEST"],
+                  },
+                  "cypht_bridge": {
+                      "ref": os.environ["BRIDGE_REF"],
+                      "digest": os.environ["BRIDGE_DIGEST"],
+                  },
+                  "aio": {
+                      "ref": os.environ["AIO_REF"],
+                      "digest": os.environ["AIO_DIGEST"],
+                  },
+              },
+          }
+          with open("image-bundle.json", "w", encoding="utf-8") as handle:
+              json.dump(bundle, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          PY
+      - uses: actions/upload-artifact@v4
         with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-      - name: Cypht Bridge image metadata
-        id: bridge-meta
-        uses: docker/metadata-action@v5
+          name: image-bundle
+          path: image-bundle.json
+          if-no-files-found: error
+
+  promote-container-images:
+    needs: [validate, build, verify-container-images]
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: cypht-gateway-release-promotion
+      cancel-in-progress: false
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
-          images: ghcr.io/${{ github.repository }}-cypht-bridge
-          tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-          labels: |
-            org.opencontainers.image.description=Private Gateway module on Cypht 2.13.0
-      - name: Build and publish Gateway image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.gateway-meta.outputs.tags }}
-          labels: ${{ steps.gateway-meta.outputs.labels }}
-          cache-from: type=gha,scope=gateway
-          cache-to: type=gha,scope=gateway,mode=max
-      - name: Build and publish Cypht 2.13.0 Bridge image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.cypht
-          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.bridge-meta.outputs.tags }}
-          labels: ${{ steps.bridge-meta.outputs.labels }}
-          cache-from: type=gha,scope=cypht-bridge
-          cache-to: type=gha,scope=cypht-bridge,mode=max
-      - name: All-in-One image metadata
-        id: aio-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}-aio
-          tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-          labels: |
-            org.opencontainers.image.description=All-in-One Cypht 2.13.0 Webmail with REST API and MCP server
-      - name: Build and publish All-in-One image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.aio
-          build-args: CYPHT_IMAGE=cypht/cypht:2.13.0
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.aio-meta.outputs.tags }}
-          labels: ${{ steps.aio-meta.outputs.labels }}
-          cache-from: type=gha,scope=cypht-aio
-          cache-to: type=gha,scope=cypht-aio,mode=max
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preflight immutable image bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA_TAG="sha-${SOURCE_SHA}"
+          for repo in "${GATEWAY_IMAGE}" "${CYPHT_BRIDGE_IMAGE}" "${AIO_IMAGE}"; do
+            docker buildx imagetools inspect "${repo}:${SHA_TAG}" >/dev/null
+          done
+      - name: Promote coordinated release aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA_TAG="sha-${SOURCE_SHA}"
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION="${TAG_NAME#v}"
+          BASE_VERSION="${VERSION%%-*}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          if [[ -z "${MAJOR:-}" || -z "${MINOR:-}" || -z "${PATCH:-}" ]]; then
+            echo "Release tag must be vMAJOR.MINOR.PATCH[-PRERELEASE]" >&2
+            exit 1
+          fi
+
+          ALIASES=("${TAG_NAME}" "${VERSION}")
+          if [[ "${VERSION}" != *-* ]]; then
+            ALIASES+=("${MAJOR}.${MINOR}" "latest")
+          fi
+
+          for alias in "${ALIASES[@]}"; do
+            for repo in "${GATEWAY_IMAGE}" "${CYPHT_BRIDGE_IMAGE}" "${AIO_IMAGE}"; do
+              echo "Promoting ${repo}:${alias} from ${repo}:${SHA_TAG}"
+              docker buildx imagetools create \
+                --tag "${repo}:${alias}" \
+                "${repo}:${SHA_TAG}"
+            done
+          done
 
   publish:
-    needs: [build, container-images]
+    needs: [build, promote-container-images]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -212,6 +294,10 @@ jobs:
           pattern: '*64'
           path: release-assets
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-bundle
+          path: release-assets
       - name: Package source, bridge and contracts
         run: |
           git archive --format=zip --prefix="cypht-gateway-${GITHUB_REF_NAME}/" -o "release-assets/cypht-gateway-${GITHUB_REF_NAME}-git.zip" "$GITHUB_REF_NAME"
@@ -226,6 +312,7 @@ jobs:
           unzip -t "cypht-gateway-${GITHUB_REF_NAME}-git.zip"
           unzip -t "cypht-gateway-${GITHUB_REF_NAME}-source.zip"
           unzip -t "cypht-gateway-${GITHUB_REF_NAME}-cypht-bridge.zip"
+          python3 -m json.tool image-bundle.json >/dev/null
           mkdir -p /tmp/verify-git /tmp/verify-source /tmp/verify-bridge
           unzip -q "cypht-gateway-${GITHUB_REF_NAME}-git.zip" -d /tmp/verify-git
           unzip -q "cypht-gateway-${GITHUB_REF_NAME}-source.zip" -d /tmp/verify-source

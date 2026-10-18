@@ -27,39 +27,46 @@ class TestPingHandlerWithFeedsAndDurable extends Hm_Handler_gateway_ping {
     public function module_is_supported($name) { return $name === 'feeds'; }
 }
 
-// 1. Test without feeds and without durable config
-ob_start();
-try {
-    (new TestPingHandlerNoFeeds())->process();
-} catch (TestBridgeCapabilitiesEnded $error) {}
-$result = json_decode(ob_get_clean(), true);
-$data = $result['data'] ?? array();
-$caps = $data['capabilities'] ?? array();
-
-if (in_array('feeds.read.v1', $caps, true)) {
-    throw new RuntimeException('Feeds capability was unexpectedly advertised when module is disabled');
-}
-if (in_array('user_config.durable.v1', $caps, true) || in_array('contacts.write.v1', $caps, true)) {
-    throw new RuntimeException('Write capabilities were unexpectedly advertised without durable user-config');
-}
-if (!in_array('mail.read.v1', $caps, true) || !in_array('accounts.read.v1', $caps, true)) {
-    throw new RuntimeException('Basic read capabilities are missing');
+function gateway_test_capabilities($handler) {
+    ob_start();
+    try {
+        $handler->process();
+    } catch (TestBridgeCapabilitiesEnded $error) {}
+    $result = json_decode(ob_get_clean(), true);
+    return $result['data']['capabilities'] ?? array();
 }
 
-// 2. Test with feeds and with durable config
-ob_start();
-try {
-    (new TestPingHandlerWithFeedsAndDurable())->process();
-} catch (TestBridgeCapabilitiesEnded $error) {}
-$result = json_decode(ob_get_clean(), true);
-$data = $result['data'] ?? array();
-$caps = $data['capabilities'] ?? array();
-
-if (!in_array('feeds.read.v1', $caps, true)) {
-    throw new RuntimeException('Feeds capability was not advertised when module is supported');
+function gateway_assert_capability($capabilities, $capability, $expected) {
+    $present = in_array($capability, $capabilities, true);
+    if ($present !== $expected) {
+        $state = $expected ? 'missing' : 'unexpectedly advertised';
+        throw new RuntimeException("Capability {$capability} is {$state}");
+    }
 }
-if (!in_array('user_config.durable.v1', $caps, true) || !in_array('contacts.write.v1', $caps, true) || !in_array('tags.write.v1', $caps, true)) {
-    throw new RuntimeException('Durable write capabilities were not advertised when storage is safe');
+
+$durable_write_capabilities = array(
+    'contacts.write.v1',
+    'tags.write.v1',
+    'calendar.write.v1',
+    'saved_searches.write.v1',
+);
+
+// 1. Optional modules and durable writes must fail closed.
+$caps = gateway_test_capabilities(new TestPingHandlerNoFeeds());
+gateway_assert_capability($caps, 'feeds.read.v1', false);
+gateway_assert_capability($caps, 'user_config.durable.v1', false);
+foreach ($durable_write_capabilities as $capability) {
+    gateway_assert_capability($caps, $capability, false);
+}
+gateway_assert_capability($caps, 'mail.read.v1', true);
+gateway_assert_capability($caps, 'accounts.read.v1', true);
+
+// 2. Supported optional modules and safe durable storage may advertise writes.
+$caps = gateway_test_capabilities(new TestPingHandlerWithFeedsAndDurable());
+gateway_assert_capability($caps, 'feeds.read.v1', true);
+gateway_assert_capability($caps, 'user_config.durable.v1', true);
+foreach ($durable_write_capabilities as $capability) {
+    gateway_assert_capability($caps, $capability, true);
 }
 
 echo "Bridge capability present/missing behavioral test ok\n";

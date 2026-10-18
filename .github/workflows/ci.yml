@@ -33,25 +33,45 @@ jobs:
         run: python3 scripts/check-frontend.py
       - name: PHP bridge syntax
         run: find cypht-module -name '*.php' -print0 | xargs -0 -n1 php -l
-      - name: Cypht 2.12.0 Bridge and repository tests
+      - name: Bridge contract and capability tests
         run: |
           php tests/bridge_contract.php
           php tests/bridge_capabilities.php
           php tests/bridge_persistence_guard.php
+      - name: Checkout pinned Cypht 2.13.0 source
+        uses: actions/checkout@v4
+        with:
+          repository: cypht-org/cypht
+          ref: 4caf0a64a4d4b1b2756ea05e3883aacac16babc2
+          path: .ci/cypht-2.13.0
+          persist-credentials: false
+      - name: Cypht 2.13.0 primary Bridge and repository tests
+        env:
+          CYPHT_SOURCE_PATH: ${{ github.workspace }}/.ci/cypht-2.13.0
+        run: |
+          python3 scripts/check-cypht-matrix.py
+          php tests/cypht_contacts_repo.php
+          php tests/bridge_ping.php
+          php tests/cypht_api_login_config.php
+          php tests/cypht_tags_repo.php
+          php tests/bridge_tags.php
+          php tests/cypht_saved_searches_repo.php
+          php tests/bridge_saved_searches.php
+          php tests/bridge_calendar.php
+          php tests/bridge_sieve_status.php
+          php tests/cypht_user_config_persistence.php
+      - name: Cypht 2.12.0 compatibility smoke
+        run: |
           curl --fail --location --retry 3 https://codeload.github.com/cypht-org/cypht/zip/refs/tags/v2.12.0 -o /tmp/cypht-v2.12.0.zip
           echo "44cf3a67438ed1d0921dbc1cab58a6939b1a09667156984ca193dbce57a24605  /tmp/cypht-v2.12.0.zip" | sha256sum -c -
           unzip -q /tmp/cypht-v2.12.0.zip -d /tmp
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 python3 scripts/check-cypht-matrix.py
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_contacts_repo.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_ping.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_api_login_config.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_tags_repo.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_tags.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_saved_searches_repo.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_saved_searches.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_calendar.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/bridge_sieve_status.php
-          CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0 php tests/cypht_user_config_persistence.php
+          export CYPHT_SOURCE_PATH=/tmp/cypht-2.12.0
+          python3 scripts/check-cypht-matrix.py
+          php tests/bridge_ping.php
+          php tests/cypht_api_login_config.php
+          php tests/cypht_contacts_repo.php
+          php tests/bridge_tags.php
+          php tests/cypht_user_config_persistence.php
       - name: Reject missing or shared Cypht Bridge keys
         run: |
           sh -n docker/cypht-gateway-entrypoint.sh
