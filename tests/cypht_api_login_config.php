@@ -2,12 +2,12 @@
 
 $source = getenv('CYPHT_SOURCE_PATH');
 if (!$source || !is_file($source.'/lib/version.php')) {
-    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to the Cypht v2.12.0 source directory\n");
+    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to the Cypht source directory\n");
     exit(1);
 }
 require $source.'/lib/version.php';
-if (CYPHT_VERSION !== '2.12.0') {
-    throw new RuntimeException('API login config test requires Cypht 2.12.0');
+if (!in_array(CYPHT_VERSION, array('2.12.0', '2.13.0'), true)) {
+    throw new RuntimeException('API login config test requires Cypht 2.12.0 or 2.13.0');
 }
 
 function env($key, $default = null) {

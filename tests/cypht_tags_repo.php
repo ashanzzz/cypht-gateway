@@ -2,12 +2,12 @@
 
 $source = getenv('CYPHT_SOURCE_PATH');
 if (!$source || !is_file($source.'/modules/tags/hm-tags.php')) {
-    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to the Cypht v2.12.0 source directory\n");
+    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to the Cypht source directory\n");
     exit(1);
 }
 require $source.'/lib/version.php';
-if (!defined('CYPHT_VERSION') || CYPHT_VERSION !== '2.12.0') {
-    throw new RuntimeException('Tags repository test requires Cypht 2.12.0');
+if (!defined('CYPHT_VERSION') || !in_array(CYPHT_VERSION, array('2.12.0', '2.13.0'), true)) {
+    throw new RuntimeException('Tags repository test requires Cypht 2.12.0 or 2.13.0');
 }
 
 define('DEBUG_MODE', true);

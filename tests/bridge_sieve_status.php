@@ -2,11 +2,11 @@
 
 $source = getenv('CYPHT_SOURCE_PATH');
 if (!$source || !is_file($source.'/lib/version.php')) {
-    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to Cypht 2.12.0 source\n");
+    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to Cypht source\n");
     exit(1);
 }
 require $source.'/lib/version.php';
-if (CYPHT_VERSION !== '2.12.0') throw new RuntimeException('Sieve status test requires Cypht 2.12.0');
+if (!in_array(CYPHT_VERSION, array('2.12.0', '2.13.0'), true)) throw new RuntimeException('Sieve status test requires Cypht 2.12.0 or 2.13.0');
 define('DEBUG_MODE', true);
 define('DEFAULT_ENABLE_SIEVE_FILTER', false);
 function hm_exists($name) { return function_exists($name); }

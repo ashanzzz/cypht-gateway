@@ -2,12 +2,12 @@
 
 $source = getenv('CYPHT_SOURCE_PATH');
 if (!$source || !is_file($source.'/lib/version.php')) {
-    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to the Cypht v2.12.0 source directory\n");
+    fwrite(STDERR, "Set CYPHT_SOURCE_PATH to the Cypht source directory\n");
     exit(1);
 }
 require $source.'/lib/version.php';
-if (!defined('CYPHT_VERSION') || CYPHT_VERSION !== '2.12.0') {
-    throw new RuntimeException('Bridge ping test requires Cypht 2.12.0');
+if (!defined('CYPHT_VERSION') || !in_array(CYPHT_VERSION, array('2.12.0', '2.13.0'), true)) {
+    throw new RuntimeException('Bridge ping test requires Cypht 2.12.0 or 2.13.0');
 }
 
 function hm_exists($name) { return function_exists($name); }
@@ -31,7 +31,7 @@ if (!is_array($result) || ($result['ok'] ?? false) !== true) {
     throw new RuntimeException('Bridge ping response is not valid JSON');
 }
 $data = $result['data'] ?? array();
-if (($data['status'] ?? null) !== 'ok' || ($data['cypht_version'] ?? null) !== '2.12.0') {
+if (($data['status'] ?? null) !== 'ok' || !in_array($data['cypht_version'] ?? null, array('2.12.0', '2.13.0'), true)) {
     throw new RuntimeException('Bridge ping did not report the Cypht 2.12.0 baseline');
 }
 if (($data['bridge_version'] ?? null) !== trim(file_get_contents(__DIR__.'/../VERSION'))) {
