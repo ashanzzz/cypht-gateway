@@ -8,6 +8,8 @@ All notable changes to this project will be documented here. The project follows
 - **Unified Operation Catalog (`api/capability-registry.yaml`)**: Extended capability registry with granular `backend_capabilities` mappings and 5 standardized ToolAnnotation presets (`read`, `write`, `update`, `destructive`, `send`), establishing a single source of truth without framework codegen overhead.
 - **Bi-directional MCP Catalog Invariant**: Added missing `mail_list_attachments`, `feeds_list`, and `feeds_get` to the catalog. Enforced exact bi-directional set equality in `scripts/check-repository.py` between catalog MCP tools (42) and MCP source tools (42).
 - **Exact Risk & Annotation Consistency**: Enforced that `WRITE_TOOLS` gate matches catalog write/destructive risks exactly, and that every tool annotation strictly matches its operation risk profile.
+- **Wire-Level MCP ToolAnnotations**: Implemented `annotations(...)` metadata across all 42 `#[tool]` definitions in `crates/gateway-mcp/src/lib.rs`, exposing `read_only_hint`, `destructive_hint`, `idempotent_hint`, and `open_world_hint` directly on the wire in MCP `tools/list`.
+- **Exact HTTP Method & Annotation Validation**: Enhanced `scripts/check-repository.py` to structurally validate both path and HTTP method against parsed OpenAPI YAML and the Axum router, and mechanically assert that every MCP tool's wire annotation hints match its catalog preset.
 - **Durability Policy Decoupled from Transport**: Shifted `user_config.durable.v1` validation into `post_user_config_with_capability` at the capability layer, removing business durability logic from raw bridge POST transport helpers.
 
 ### Build & CI Fixes

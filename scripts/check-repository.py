@@ -209,18 +209,25 @@ for member in members:
     if member.startswith(("crates/", "apps/")) and not (ROOT / member / "Cargo.toml").is_file():
         errors.append(f"workspace member lacks Cargo.toml: {member}")
 
-openapi = (ROOT / "api/openapi.yaml").read_text(encoding="utf-8")
+openapi_text = (ROOT / "api/openapi.yaml").read_text(encoding="utf-8")
 registry = (ROOT / "api/capability-registry.yaml").read_text(encoding="utf-8")
+openapi_data = yaml.safe_load(openapi_text)
+openapi_paths = openapi_data.get("paths", {})
+
+# Exact OpenAPI path and HTTP method validation
 for method, path in re.findall(r'api:\s*"(GET|POST|PATCH|PUT|DELETE) (/api/v1/[^" ]+)"', registry):
     relative = path.removeprefix("/api/v1")
-    normalized = re.sub(r"\{[^}]+\}", "{id}", relative)
-    openapi_norm = re.sub(r"\{[^}]+\}", "{id}", openapi)
-    if normalized not in openapi_norm:
-        errors.append(f"capability route missing from OpenAPI: {method} {path}")
+    if not relative.startswith("/"):
+        relative = "/" + relative
+    method_lower = method.lower()
+    if relative not in openapi_paths:
+        errors.append(f"capability route path missing from OpenAPI: {method} {path}")
+    elif method_lower not in openapi_paths[relative]:
+        errors.append(f"capability HTTP method {method} for {path} missing from OpenAPI paths")
 
 scope_enum = re.search(
     r"(?ms)^    Scope:\n      type: string\n      enum: \[([^]]+)\]",
-    openapi,
+    openapi_text,
 )
 if not scope_enum:
     errors.append("OpenAPI Scope enum is missing")
@@ -235,13 +242,31 @@ else:
     if missing_scopes:
         errors.append("scope values missing from OpenAPI: " + ", ".join(sorted(missing_scopes)))
 
+# Exact Gateway API router path and HTTP method validation
 api_source_path = ROOT / "crates/gateway-api/src/lib.rs"
 if api_source_path.is_file():
     api_source = api_source_path.read_text(encoding="utf-8")
+    routes = {}
+    for m in re.finditer(r'\.route\(\s*"(/api/v1[^"]*)",\s*([\s\S]*?)\)(?=\s*\.(?:route|layer|fallback|with_state)|;)', api_source):
+        r_path = m.group(1)
+        chain = m.group(2)
+        methods = set()
+        if re.search(r"(?:^|\.|\s)get\(", chain):
+            methods.add("get")
+        if re.search(r"(?:^|\.|\s)post\(", chain):
+            methods.add("post")
+        if re.search(r"(?:^|\.|\s)(?:axum::routing::)?patch\(", chain):
+            methods.add("patch")
+        if re.search(r"(?:^|\.|\s)delete\(", chain):
+            methods.add("delete")
+        routes[r_path] = methods
+
     for method, path in re.findall(r'api:\s*"(GET|POST|PATCH|PUT|DELETE) (/api/v1/[^" ]+)"', registry):
-        route_path = path.removeprefix("/api/v1")
-        if f'"/api/v1{route_path}"' not in api_source:
-            errors.append(f"capability route missing from gateway-api source: {method} {path}")
+        method_lower = method.lower()
+        if path not in routes:
+            errors.append(f"capability route path missing from gateway-api router: {method} {path}")
+        elif method_lower not in routes[path]:
+            errors.append(f"capability HTTP method {method} for {path} missing from gateway-api router (has {routes[path]})")
 
 # PR6 Operation Catalog and MCP Tool invariants
 mcp_source_path = ROOT / "crates/gateway-mcp/src/lib.rs"
@@ -303,6 +328,46 @@ if mcp_source_path.is_file():
         for cap in backend_caps:
             if cap not in rust_caps:
                 errors.append(f"operation {op_name} lists unknown backend capability: {cap}")
+
+# 5. Tool annotation metadata exact match in #[tool(... annotations(...))]
+    tool_expected_preset = {}
+    for op_name, op in catalog_data.get("capabilities", {}).items():
+        if "mcp" in op:
+            tool_expected_preset[op["mcp"]] = op.get("tool", {}).get("annotation")
+
+    tool_matches = re.finditer(r"#\[tool\(([\s\S]*?)\)\]", mcp_source)
+    verified_tool_annotations = 0
+    for tm in tool_matches:
+        attr = tm.group(1)
+        name_m = re.search(r'name\s*=\s*"([^"]+)"', attr)
+        if not name_m:
+            continue
+        tool_name = name_m.group(1)
+        preset_name = tool_expected_preset.get(tool_name)
+        if not preset_name:
+            continue
+        expected_hints = catalog_data["annotation_presets"][preset_name]
+        ann_m = re.search(r"annotations\(([\s\S]*?)\)", attr)
+        if not ann_m:
+            errors.append(f"MCP tool {tool_name} missing annotations(...) metadata in #[tool]")
+            continue
+        ann_body = ann_m.group(1)
+        for hint_key, expected_val in [
+            ("read_only_hint", expected_hints["read_only"]),
+            ("destructive_hint", expected_hints["destructive"]),
+            ("idempotent_hint", expected_hints["idempotent"]),
+            ("open_world_hint", expected_hints["open_world"]),
+        ]:
+            hint_m = re.search(rf"{hint_key}\s*=\s*(true|false)", ann_body)
+            if not hint_m:
+                errors.append(f"MCP tool {tool_name} missing {hint_key} in annotations(...)")
+            elif (hint_m.group(1) == "true") != expected_val:
+                actual_val = (hint_m.group(1) == "true")
+                errors.append(f"MCP tool {tool_name} {hint_key} mismatch: actual={actual_val}, expected={expected_val} from preset {preset_name}")
+        verified_tool_annotations += 1
+    if verified_tool_annotations != len(catalog_mcp_tools):
+        errors.append(f"expected {len(catalog_mcp_tools)} tool annotations verified, found {verified_tool_annotations}")
+
 
 # Prevent accidental literal deployment secrets in tracked config/docs.
 secret_pattern = re.compile(r"^(GATEWAY_MASTER_KEY|CYPHT_API_LOGIN_KEY|CYPHT_BRIDGE_KEY|UNRAID_USER|UNRAID_PW)=([^<$\s].+)$", re.M)

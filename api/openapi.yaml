@@ -153,7 +153,8 @@ paths:
         - {name: confirm, in: query, required: true, schema: {type: boolean, enum: [true]}}
       responses:
         "204": {description: Tag removed from a message}
-        "400": {$ref: "#/components/responses/Error"}  /feeds:
+        "400": {$ref: "#/components/responses/Error"}
+  /feeds:
     get:
       operationId: listFeeds
       x-required-scope: feeds.read
@@ -546,7 +547,8 @@ components:
       minProperties: 1
       properties:
         name: {type: string, minLength: 1, maxLength: 200}
-        color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$', description: Must be in the Cypht tag palette}    FeedSubscription:
+        color: {type: string, pattern: '^#[0-9A-Fa-f]{6}$', description: Must be in the Cypht tag palette}
+    FeedSubscription:
       type: object
       additionalProperties: false
       required: [id, name, url]
