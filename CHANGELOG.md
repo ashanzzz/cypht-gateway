@@ -4,6 +4,10 @@ All notable changes to this project will be documented here. The project follows
 
 ## [Unreleased] - 2026-10-17
 
+### Versioned Storage Migrations
+- **Versioned SQLite Migration Subsystem**: Introduced `crates/gateway-storage/src/migrations.rs` managing schema state via `PRAGMA user_version` and atomic transaction execution, establishing a solid migration boundary before expanding account and secret models.
+- **Backwards-Compatible Baseline v1**: Replaced raw ad-hoc `CREATE TABLE IF NOT EXISTS` execution in `Store::open()` and `Store::open_memory()` with atomic version-1 baseline migration, seamlessly preserving data in existing unversioned databases.
+
 ### Operation Catalog & Tool Annotations (PR 6)
 - **Unified Operation Catalog (`api/capability-registry.yaml`)**: Extended capability registry with granular `backend_capabilities` mappings and 5 standardized ToolAnnotation presets (`read`, `write`, `update`, `destructive`, `send`), establishing a single source of truth without framework codegen overhead.
 - **Bi-directional MCP Catalog Invariant**: Added missing `mail_list_attachments`, `feeds_list`, and `feeds_get` to the catalog. Enforced exact bi-directional set equality in `scripts/check-repository.py` between catalog MCP tools (42) and MCP source tools (42).

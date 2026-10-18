@@ -1,3 +1,6 @@
+mod migrations;
+pub use migrations::CURRENT_SCHEMA_VERSION;
+
 use gateway_core::{AuditEntry, GatewayError, GatewayResult, TokenMetadata};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -55,87 +58,19 @@ pub struct Store {
 
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> GatewayResult<Self> {
-        let conn = Connection::open(path).map_err(storage_err)?;
-        let store = Self {
+        let mut conn = Connection::open(path).map_err(storage_err)?;
+        migrations::migrate(&mut conn)?;
+        Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
-        };
-        store.migrate()?;
-        Ok(store)
+        })
     }
 
     pub fn open_memory() -> GatewayResult<Self> {
-        let conn = Connection::open_in_memory().map_err(storage_err)?;
-        let store = Self {
+        let mut conn = Connection::open_in_memory().map_err(storage_err)?;
+        migrations::migrate(&mut conn)?;
+        Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
-        };
-        store.migrate()?;
-        Ok(store)
-    }
-
-    fn migrate(&self) -> GatewayResult<()> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|_| GatewayError::Storage("database lock poisoned".into()))?;
-        conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
-             PRAGMA foreign_keys=ON;
-             CREATE TABLE IF NOT EXISTS gateway_sessions (
-               token_hash TEXT PRIMARY KEY,
-               username TEXT NOT NULL,
-               credential_ciphertext BLOB NOT NULL,
-               cypht_session_ciphertext BLOB NOT NULL,
-               created_at INTEGER NOT NULL,
-               expires_at INTEGER NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS gateway_pats (
-               id TEXT PRIMARY KEY,
-               token_hash TEXT NOT NULL UNIQUE,
-               username TEXT NOT NULL,
-               name TEXT NOT NULL,
-               prefix TEXT NOT NULL,
-               scopes_json TEXT NOT NULL,
-               account_allowlist_json TEXT NOT NULL,
-               credential_ciphertext BLOB NOT NULL,
-               cypht_session_ciphertext BLOB,
-               created_at INTEGER NOT NULL,
-               expires_at INTEGER,
-               last_used_at INTEGER,
-               revoked_at INTEGER
-             );
-             CREATE INDEX IF NOT EXISTS idx_gateway_pats_user ON gateway_pats(username);
-             CREATE TABLE IF NOT EXISTS gateway_audit (
-               id INTEGER PRIMARY KEY AUTOINCREMENT,
-               created_at INTEGER NOT NULL,
-               username TEXT NOT NULL,
-               auth_id TEXT,
-               operation TEXT NOT NULL,
-               resource TEXT,
-               success INTEGER NOT NULL,
-               detail TEXT
-             );
-             CREATE TABLE IF NOT EXISTS gateway_idempotency (
-               username TEXT NOT NULL,
-               operation TEXT NOT NULL,
-               idempotency_key TEXT NOT NULL,
-               request_hash TEXT NOT NULL,
-               response_json TEXT NOT NULL,
-               created_at INTEGER NOT NULL,
-               expires_at INTEGER NOT NULL,
-               PRIMARY KEY (username, operation, idempotency_key)
-             );
-             CREATE INDEX IF NOT EXISTS idx_gateway_idempotency_expiry ON gateway_idempotency(expires_at);
-             CREATE TABLE IF NOT EXISTS gateway_object_refs (
-               public_id TEXT PRIMARY KEY,
-               owner TEXT NOT NULL,
-               kind TEXT NOT NULL,
-               parts_ciphertext BLOB NOT NULL,
-               created_at INTEGER NOT NULL
-             );
-             CREATE INDEX IF NOT EXISTS idx_gateway_object_refs_owner_kind
-               ON gateway_object_refs(owner, kind);"
-        ).map_err(storage_err)?;
-        Ok(())
+        })
     }
 
     pub fn put_session(&self, token_hash: &str, session: &StoredSession) -> GatewayResult<()> {
@@ -708,5 +643,42 @@ mod tests {
 
         assert!(store.get_pat_by_hash("hash", 500).is_err());
         assert!(store.list_pats("alice").is_err());
+    }
+    #[test]
+    fn unversioned_database_upgrades_to_v1_preserving_existing_data() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE gateway_sessions (
+               token_hash TEXT PRIMARY KEY,
+               username TEXT NOT NULL,
+               credential_ciphertext BLOB NOT NULL,
+               cypht_session_ciphertext BLOB NOT NULL,
+               created_at INTEGER NOT NULL,
+               expires_at INTEGER NOT NULL
+             );
+             INSERT INTO gateway_sessions VALUES ('hash1', 'alice', X'01', X'02', 100, 200);",
+        )
+        .unwrap();
+        assert_eq!(
+            conn.query_row("PRAGMA user_version;", [], |r| r.get::<_, u32>(0))
+                .unwrap(),
+            0
+        );
+
+        migrations::migrate(&mut conn).unwrap();
+
+        assert_eq!(
+            conn.query_row("PRAGMA user_version;", [], |r| r.get::<_, u32>(0))
+                .unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
+        let user: String = conn
+            .query_row(
+                "SELECT username FROM gateway_sessions WHERE token_hash = 'hash1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(user, "alice");
     }
 }
