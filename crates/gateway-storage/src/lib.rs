@@ -42,6 +42,34 @@ pub struct StoredIdempotency {
     pub expires_at: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredAccountBinding {
+    pub public_id: String,
+    pub owner: String,
+    pub internal_key_hash: String,
+    pub internal_parts_ciphertext: Vec<u8>,
+    pub generation: u32,
+    pub revision: u32,
+    pub managed: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub retired_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredManagedAccountBundle {
+    pub bundle_id: String,
+    pub owner: String,
+    pub public_account_id: String,
+    pub imap_id: String,
+    pub smtp_id: Option<String>,
+    pub profile_ids: Vec<String>,
+    pub managed_by_gateway: bool,
+    pub revision: u32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredObjectRef {
     pub public_id: String,
@@ -293,6 +321,173 @@ impl Store {
         }
         transaction.commit().map_err(storage_err)
     }
+    pub fn put_account_binding(&self, binding: &StoredAccountBinding) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.execute(
+            "INSERT INTO gateway_account_bindings
+             (public_id, owner, internal_key_hash, internal_parts_ciphertext, generation, revision, managed, created_at, updated_at, retired_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(public_id) DO UPDATE SET
+               owner=excluded.owner,
+               internal_key_hash=excluded.internal_key_hash,
+               internal_parts_ciphertext=excluded.internal_parts_ciphertext,
+               generation=excluded.generation,
+               revision=excluded.revision,
+               managed=excluded.managed,
+               updated_at=excluded.updated_at,
+               retired_at=excluded.retired_at",
+            params![
+                binding.public_id,
+                binding.owner,
+                binding.internal_key_hash,
+                binding.internal_parts_ciphertext,
+                binding.generation,
+                binding.revision,
+                binding.managed as i32,
+                binding.created_at,
+                binding.updated_at,
+                binding.retired_at,
+            ],
+        )
+        .map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn get_account_binding(
+        &self,
+        owner: &str,
+        public_id: &str,
+    ) -> GatewayResult<Option<StoredAccountBinding>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let row = conn.query_row(
+            "SELECT public_id, owner, internal_key_hash, internal_parts_ciphertext, generation, revision, managed, created_at, updated_at, retired_at
+             FROM gateway_account_bindings
+             WHERE owner=?1 AND public_id=?2",
+            params![owner, public_id],
+            decode_account_binding_row,
+        ).optional().map_err(storage_err)?;
+        Ok(row)
+    }
+
+    pub fn get_active_account_binding_by_key(
+        &self,
+        owner: &str,
+        internal_key_hash: &str,
+    ) -> GatewayResult<Option<StoredAccountBinding>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let row = conn.query_row(
+            "SELECT public_id, owner, internal_key_hash, internal_parts_ciphertext, generation, revision, managed, created_at, updated_at, retired_at
+             FROM gateway_account_bindings
+             WHERE owner=?1 AND internal_key_hash=?2 AND retired_at IS NULL",
+            params![owner, internal_key_hash],
+            decode_account_binding_row,
+        ).optional().map_err(storage_err)?;
+        Ok(row)
+    }
+
+    pub fn retire_account_binding(
+        &self,
+        owner: &str,
+        public_id: &str,
+        now: i64,
+    ) -> GatewayResult<bool> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let changed = conn
+            .execute(
+                "UPDATE gateway_account_bindings
+             SET retired_at=?1, updated_at=?1
+             WHERE owner=?2 AND public_id=?3 AND retired_at IS NULL",
+                params![now, owner, public_id],
+            )
+            .map_err(storage_err)?;
+        Ok(changed > 0)
+    }
+
+    pub fn list_active_account_bindings(
+        &self,
+        owner: &str,
+    ) -> GatewayResult<Vec<StoredAccountBinding>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let mut stmt = conn.prepare(
+            "SELECT public_id, owner, internal_key_hash, internal_parts_ciphertext, generation, revision, managed, created_at, updated_at, retired_at
+             FROM gateway_account_bindings
+             WHERE owner=?1 AND retired_at IS NULL
+             ORDER BY created_at ASC",
+        ).map_err(storage_err)?;
+        let rows = stmt
+            .query_map(params![owner], decode_account_binding_row)
+            .map_err(storage_err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(storage_err)
+    }
+
+    pub fn put_managed_account_bundle(
+        &self,
+        bundle: &StoredManagedAccountBundle,
+    ) -> GatewayResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let profile_ids_json = serde_json::to_string(&bundle.profile_ids)
+            .map_err(|e| GatewayError::Storage(format!("encode profile_ids: {e}")))?;
+        conn.execute(
+            "INSERT INTO gateway_account_bundles
+             (bundle_id, owner, public_account_id, imap_id, smtp_id, profile_ids_json, managed_by_gateway, revision, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(bundle_id) DO UPDATE SET
+               owner=excluded.owner,
+               public_account_id=excluded.public_account_id,
+               imap_id=excluded.imap_id,
+               smtp_id=excluded.smtp_id,
+               profile_ids_json=excluded.profile_ids_json,
+               managed_by_gateway=excluded.managed_by_gateway,
+               revision=excluded.revision,
+               updated_at=excluded.updated_at",
+            params![
+                bundle.bundle_id,
+                bundle.owner,
+                bundle.public_account_id,
+                bundle.imap_id,
+                bundle.smtp_id,
+                profile_ids_json,
+                bundle.managed_by_gateway as i32,
+                bundle.revision,
+                bundle.created_at,
+                bundle.updated_at,
+            ],
+        )
+        .map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn get_managed_account_bundle(
+        &self,
+        owner: &str,
+        public_account_id: &str,
+    ) -> GatewayResult<Option<StoredManagedAccountBundle>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let row = conn.query_row(
+            "SELECT bundle_id, owner, public_account_id, imap_id, smtp_id, profile_ids_json, managed_by_gateway, revision, created_at, updated_at
+             FROM gateway_account_bundles
+             WHERE owner=?1 AND public_account_id=?2",
+            params![owner, public_account_id],
+            decode_managed_account_bundle_row,
+        ).optional().map_err(storage_err)?;
+        Ok(row)
+    }
+
+    pub fn delete_managed_account_bundle(
+        &self,
+        owner: &str,
+        bundle_id: &str,
+    ) -> GatewayResult<bool> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let changed = conn
+            .execute(
+                "DELETE FROM gateway_account_bundles WHERE owner=?1 AND bundle_id=?2",
+                params![owner, bundle_id],
+            )
+            .map_err(storage_err)?;
+        Ok(changed > 0)
+    }
+
     pub fn put_object_ref(&self, value: &StoredObjectRef) -> GatewayResult<()> {
         self.put_object_refs(std::slice::from_ref(value))
     }
@@ -432,6 +627,41 @@ where
     let raw: String = row.get(index)?;
     serde_json::from_str(&raw).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
+    })
+}
+
+fn decode_account_binding_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredAccountBinding> {
+    let managed_int: i32 = row.get(6)?;
+    Ok(StoredAccountBinding {
+        public_id: row.get(0)?,
+        owner: row.get(1)?,
+        internal_key_hash: row.get(2)?,
+        internal_parts_ciphertext: row.get(3)?,
+        generation: row.get(4)?,
+        revision: row.get(5)?,
+        managed: managed_int != 0,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+        retired_at: row.get(9)?,
+    })
+}
+
+fn decode_managed_account_bundle_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<StoredManagedAccountBundle> {
+    let profile_ids: Vec<String> = json_column(row, 5)?;
+    let managed_int: i32 = row.get(6)?;
+    Ok(StoredManagedAccountBundle {
+        bundle_id: row.get(0)?,
+        owner: row.get(1)?,
+        public_account_id: row.get(2)?,
+        imap_id: row.get(3)?,
+        smtp_id: row.get(4)?,
+        profile_ids,
+        managed_by_gateway: managed_int != 0,
+        revision: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 
@@ -680,5 +910,117 @@ mod tests {
             )
             .unwrap();
         assert_eq!(user, "alice");
+    }
+    #[test]
+    fn account_bindings_lifecycle_and_active_uniqueness() {
+        let store = Store::open_memory().unwrap();
+        let binding1 = StoredAccountBinding {
+            public_id: "acc_pub_1".into(),
+            owner: "alice".into(),
+            internal_key_hash: "key_hash_imap_1".into(),
+            internal_parts_ciphertext: vec![1, 2, 3],
+            generation: 1,
+            revision: 1,
+            managed: true,
+            created_at: 100,
+            updated_at: 100,
+            retired_at: None,
+        };
+
+        store.put_account_binding(&binding1).unwrap();
+
+        assert_eq!(
+            store
+                .get_account_binding("alice", "acc_pub_1")
+                .unwrap()
+                .unwrap()
+                .internal_key_hash,
+            "key_hash_imap_1"
+        );
+        assert_eq!(
+            store
+                .get_active_account_binding_by_key("alice", "key_hash_imap_1")
+                .unwrap()
+                .unwrap()
+                .public_id,
+            "acc_pub_1"
+        );
+
+        // Another active binding with the same owner and internal_key_hash must be rejected by unique index
+        let duplicate_active = StoredAccountBinding {
+            public_id: "acc_pub_2".into(),
+            owner: "alice".into(),
+            internal_key_hash: "key_hash_imap_1".into(),
+            internal_parts_ciphertext: vec![4, 5, 6],
+            generation: 1,
+            revision: 1,
+            managed: true,
+            created_at: 105,
+            updated_at: 105,
+            retired_at: None,
+        };
+        assert!(store.put_account_binding(&duplicate_active).is_err());
+
+        // Retire binding 1
+        assert!(store
+            .retire_account_binding("alice", "acc_pub_1", 200)
+            .unwrap());
+        assert!(store
+            .get_active_account_binding_by_key("alice", "key_hash_imap_1")
+            .unwrap()
+            .is_none());
+
+        // Now creating a new generation binding with the same key hash succeeds
+        let binding2 = StoredAccountBinding {
+            public_id: "acc_pub_2".into(),
+            owner: "alice".into(),
+            internal_key_hash: "key_hash_imap_1".into(),
+            internal_parts_ciphertext: vec![4, 5, 6],
+            generation: 2,
+            revision: 1,
+            managed: true,
+            created_at: 205,
+            updated_at: 205,
+            retired_at: None,
+        };
+        store.put_account_binding(&binding2).unwrap();
+        assert_eq!(
+            store
+                .get_active_account_binding_by_key("alice", "key_hash_imap_1")
+                .unwrap()
+                .unwrap()
+                .public_id,
+            "acc_pub_2"
+        );
+
+        // Bundle test
+        let bundle = StoredManagedAccountBundle {
+            bundle_id: "bnd_1".into(),
+            owner: "alice".into(),
+            public_account_id: "acc_pub_2".into(),
+            imap_id: "1".into(),
+            smtp_id: Some("2".into()),
+            profile_ids: vec!["prof_1".into()],
+            managed_by_gateway: true,
+            revision: 1,
+            created_at: 205,
+            updated_at: 205,
+        };
+        store.put_managed_account_bundle(&bundle).unwrap();
+        assert_eq!(
+            store
+                .get_managed_account_bundle("alice", "acc_pub_2")
+                .unwrap()
+                .unwrap()
+                .bundle_id,
+            "bnd_1"
+        );
+        assert!(store
+            .delete_managed_account_bundle("alice", "bnd_1")
+            .unwrap());
+        assert!(store
+            .get_managed_account_bundle("alice", "acc_pub_2")
+            .unwrap()
+            .is_none());
     }
 }

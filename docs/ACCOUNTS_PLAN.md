@@ -58,13 +58,13 @@
 
 | 路径与方法 | 对应 Scope | 风险级别 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `POST /api/v1/account-secrets` | `accounts.write` | credential | 提交临时敏感凭据，返回短时 `credential_ref` (300s 有效) |
+| `POST /api/v1/account-secrets` | `accounts.credentials.write` | credential | 提交临时敏感凭据，返回短时 `credential_ref` (300s 有效，单次消费) |
 | `GET /api/v1/accounts` | `accounts.read` | read | 列表查询可见账户（脱敏，返回 Opaque ID） |
 | `GET /api/v1/accounts/{id}` | `accounts.read` | read | 查询单个账户详情及健康状态（脱敏） |
 | `POST /api/v1/accounts` | `accounts.write` | write | 一体化新增账户（支持 direct password 或 credential_ref） |
 | `PATCH /api/v1/accounts/{id}` | `accounts.write` | write | 修改服务器配置或更新凭据引用 |
-| `DELETE /api/v1/accounts/{id}` | `accounts.write` | destructive | 依赖感知删除（支持 `force=true` 参数显式解绑） |
-| `POST /api/v1/accounts/{id}/test` | `accounts.write` | read | 手动触发服务器真实连通性测试 |
+| `DELETE /api/v1/accounts/{id}` | `accounts.delete` | destructive | 依赖感知删除（支持 `force=true` 参数显式解绑） |
+| `POST /api/v1/accounts/{id}/test` | `accounts.test` | read | 手动触发服务器真实连通性测试 |
 
 ### 2.2 MCP 工具契约
 
@@ -99,7 +99,7 @@
 ### Milestone 3：Domain 账户服务与 REST v1
 - [ ] 在 `crates/gateway-core` 定义协议中立模型与 `ManagedAccountBundle`。
 - [ ] 在 `crates/gateway-domain` 实现短时凭据引用存储（`SecretVault`）与账户绑定。
-- [ ] 在 `crates/gateway-api` 暴露 `/api/v1/accounts` 与 `/api/v1/accounts/secrets` 端点。
+- [ ] 在 `crates/gateway-api` 暴露 `/api/v1/accounts` 与 `/api/v1/account-secrets` 端点。
 - [ ] 更新 `api/openapi.yaml` 和 `api/capability-registry.yaml`。
 
 ### Milestone 4：MCP 工具与 CLI 工具对齐

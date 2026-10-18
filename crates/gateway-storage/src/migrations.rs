@@ -1,7 +1,7 @@
 use gateway_core::{GatewayError, GatewayResult};
 use rusqlite::Connection;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 pub fn migrate(conn: &mut Connection) -> GatewayResult<()> {
     conn.execute_batch(
@@ -22,6 +22,10 @@ pub fn migrate(conn: &mut Connection) -> GatewayResult<()> {
 
     if current_version < 1 {
         apply_v1(conn)?;
+    }
+
+    if current_version < 2 {
+        apply_v2(conn)?;
     }
 
     Ok(())
@@ -97,6 +101,54 @@ fn apply_v1(conn: &mut Connection) -> GatewayResult<()> {
     Ok(())
 }
 
+fn apply_v2(conn: &mut Connection) -> GatewayResult<()> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| GatewayError::Storage(format!("begin v2 migration tx: {e}")))?;
+
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS gateway_account_bindings (
+           public_id TEXT PRIMARY KEY,
+           owner TEXT NOT NULL,
+           internal_key_hash TEXT NOT NULL,
+           internal_parts_ciphertext BLOB NOT NULL,
+           generation INTEGER NOT NULL,
+           revision INTEGER NOT NULL,
+           managed INTEGER NOT NULL,
+           created_at INTEGER NOT NULL,
+           updated_at INTEGER NOT NULL,
+           retired_at INTEGER
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_account_bindings_active
+           ON gateway_account_bindings(owner, internal_key_hash)
+           WHERE retired_at IS NULL;
+         CREATE INDEX IF NOT EXISTS idx_gateway_account_bindings_owner
+           ON gateway_account_bindings(owner);
+
+         CREATE TABLE IF NOT EXISTS gateway_account_bundles (
+           bundle_id TEXT PRIMARY KEY,
+           owner TEXT NOT NULL,
+           public_account_id TEXT NOT NULL UNIQUE,
+           imap_id TEXT NOT NULL,
+           smtp_id TEXT,
+           profile_ids_json TEXT NOT NULL,
+           managed_by_gateway INTEGER NOT NULL,
+           revision INTEGER NOT NULL,
+           created_at INTEGER NOT NULL,
+           updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_gateway_account_bundles_owner
+           ON gateway_account_bundles(owner);
+         PRAGMA user_version = 2;",
+    )
+    .map_err(|e| GatewayError::Storage(format!("execute v2 migration DDL: {e}")))?;
+
+    tx.commit()
+        .map_err(|e| GatewayError::Storage(format!("commit v2 migration tx: {e}")))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +188,23 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA user_version = 99;").unwrap();
         assert!(matches!(migrate(&mut conn), Err(GatewayError::Storage(_))));
+    }
+    #[test]
+    fn v1_database_upgrades_to_v2_preserving_existing_data() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply_v1(&mut conn).unwrap();
+        assert_eq!(
+            conn.query_row("PRAGMA user_version;", [], |r| r.get::<_, u32>(0))
+                .unwrap(),
+            1
+        );
+
+        migrate(&mut conn).unwrap();
+
+        assert_eq!(
+            conn.query_row("PRAGMA user_version;", [], |r| r.get::<_, u32>(0))
+                .unwrap(),
+            CURRENT_SCHEMA_VERSION
+        );
     }
 }

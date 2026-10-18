@@ -4,6 +4,12 @@ All notable changes to this project will be documented here. The project follows
 
 ## [Unreleased] - 2026-10-17
 
+### Account Lifecycle Core Models & Migration v2 (PR 8.1)
+- **Protocol-Neutral Account Models (`crates/gateway-core`)**: Established `ManagedAccount`, `AccountEndpoint`, `AccountSecurity`, `AccountIdentity`, and `AccountHealth` representing public account lifecycle states without leaking Cypht-internal implementation IDs into the public contract.
+- **Storage Migration v2 (`crates/gateway-storage`)**: Upgraded `CURRENT_SCHEMA_VERSION` to 2 with transactional DDL introducing `gateway_account_bindings` (with active uniqueness and retirement semantics) and `gateway_account_bundles` (mapping managed accounts to Cypht IMAP/SMTP/profile resources).
+- **Ephemeral Secret Hygiene**: Deliberately excluded transient 300s account password references from persistent SQLite schema to prevent disk residue, reserving secret handoff for in-memory encrypted storage in PR 8.3.
+- **Granular Account Scope Specification**: Updated `docs/ACCOUNTS_PLAN.md` with refined scopes (`accounts.credentials.write`, `accounts.test`, `accounts.delete`) and canonical `/api/v1/account-secrets` endpoint path.
+
 ### Versioned Storage Migrations
 - **Versioned SQLite Migration Subsystem**: Introduced `crates/gateway-storage/src/migrations.rs` managing schema state via `PRAGMA user_version` and atomic transaction execution, establishing a solid migration boundary before expanding account and secret models.
 - **Backwards-Compatible Baseline v1**: Replaced raw ad-hoc `CREATE TABLE IF NOT EXISTS` execution in `Store::open()` and `Store::open_memory()` with atomic version-1 baseline migration, seamlessly preserving data in existing unversioned databases.
