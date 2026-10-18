@@ -4,27 +4,27 @@ Cypht Gateway is a Rust-first automation and AI gateway for Cypht. It exposes Cy
 
 REST v1 is the canonical contract. v0.4 adds an MCP server that calls the same REST policy surface, so AI clients inherit PAT scopes, account allow-lists, idempotency and audit behavior.
 
-## Current milestone: v0.4.0
+## Current product baseline: v0.5.2
 
-v0.4.0 turns the mail gateway into a complete AI-facing mail automation surface:
+The v0.5.2 release establishes the core mail automation surface and CI-verified production baseline:
 
-- everything from v0.3 mail read/write, PAT, account allow-lists and opaque IDs
-- MCP server based on the official Rust MCP SDK, with stdio and Streamable HTTP transports
-- read-only MCP mode by default; write tools require explicit `--allow-write`
-- HTTP MCP callers can supply their own Cypht Gateway PAT per request
-- AI-safe message/attachment wrappers that label email content as untrusted external data
-- attachment context limits for MCP
-- audit log REST/CLI/MCP/UI visibility through the new `audit.read` scope
-- correlated `X-Request-Id` error responses
-- stable idempotency keys required by CLI and reused by the browser compose lifecycle
-- `cypht-mcp` included in Docker images and GitHub release artifacts
-- registry checks that fail if declared MCP tools are missing from source
+- Complete mail read/write surface: unified messages, search, read, attachments, send, reply, forward, draft, flags, move, archive, delete
+- MCP server (stdio and Streamable HTTP) with wire-level `ToolAnnotations` across all 42 tools
+- Read-only MCP mode by default; write tools require explicit `--allow-write` and scoped caller PATs
+- Zero-iframe native Cypht Bootstrap 5 UI integration with session SSO exchange
+- Unified Operation Catalog (`api/capability-registry.yaml`) with bidirectional consistency checks against OpenAPI, Axum router, and MCP tools
+- Tested against Cypht 2.13.0 primary behavioral suite and Cypht 2.12.0 compatibility smoke
+- Versioned SQLite migration foundation (`PRAGMA user_version` with transactional migrations)
+- Immutable commit-SHA container publication gated behind successful CI
 
-Cypht-wide feature parity beyond mail remains incomplete. v0.5 now has local Saved Searches CRUD across REST, CLI, MCP, and the management UI. Live Cypht 2.12.0 Bridge testing remains unverified. Calendar now has a limited local Cypht 2.12.0 list/create/delete surface. Sieve now has a redacted local status surface. Sieve writes, Feeds, settings, and optional PGP remain deferred. Calendar update and unsupported fields remain deferred.
+## v0.6.0 development track: Accounts & Control Plane
 
-## v0.5 work in progress
+The v0.6.0 milestone expands Gateway into an authoritative automation control plane:
 
-Saved Search ID and permission semantics are documented in `docs/SAVED_SEARCHES.md`. Local Contacts, Tags, and Saved Searches have Bridge, REST, CLI, MCP, and UI code. Saved Searches preserve stable owner-bound IDs across Gateway renames, retire IDs after delete, and deny account-restricted PATs. Advanced source references use opaque account and mailbox IDs. A custom Cypht file-settings adapter implements guarded save, stale-writer rejection, and fresh-load readback. Local source tests pass, but live Unraid writes remain unverified. Database-backed user settings still fail closed. Do not use these writes against real data before live tests. Read-only live integration remains unverified. A read-only Docker listing on 2026-09-23 confirmed the Unraid Cypht 2.12.0 container at `http://192.168.8.11:8088/`; no separate Gateway container appeared in that listing. Earlier local-browser observations do not establish the Unraid account state. Other v0.5 capability groups remain pending.
+- **Managed Account Bundles**: Single cohesive PHP Bridge transactions provisioning IMAP, SMTP, and Profile together
+- **Secret Reference Pattern**: Short-lived `credential_ref` tokens ensuring passwords never enter AI conversation contexts or MCP tool arguments
+- **Dependency-Checked Account Lifecycle**: Safe deletions preventing cascade removal of shared outbound servers
+- **Full Rust Control Plane**: Generic operation journals, reliable job scheduling, and OAuth 2.1 authorization server
 
 ## Architecture
 

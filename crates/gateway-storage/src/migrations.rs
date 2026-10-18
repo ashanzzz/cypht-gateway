@@ -14,6 +14,12 @@ pub fn migrate(conn: &mut Connection) -> GatewayResult<()> {
         .query_row("PRAGMA user_version;", [], |row| row.get(0))
         .map_err(|e| GatewayError::Storage(format!("read schema version: {e}")))?;
 
+    if current_version > CURRENT_SCHEMA_VERSION {
+        return Err(GatewayError::Storage(format!(
+            "database schema version {current_version} is newer than supported version {CURRENT_SCHEMA_VERSION}",
+        )));
+    }
+
     if current_version < 1 {
         apply_v1(conn)?;
     }
@@ -123,5 +129,12 @@ mod tests {
                 .unwrap(),
             CURRENT_SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn future_schema_version_fails_closed() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA user_version = 99;").unwrap();
+        assert!(matches!(migrate(&mut conn), Err(GatewayError::Storage(_))));
     }
 }

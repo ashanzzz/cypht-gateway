@@ -31,7 +31,7 @@
        "imap_host": "imap.company.com"
      }
      ```
-  3. **透明短时换票**：UI / 客户端可在前端透明完成短时 `POST /api/v1/accounts/secrets` 取得 `sec_xxx` 引用，AI Agent 全程仅接触引用标识符，彻底封堵大模型上下文泄露凭据的通道。
+  3. **透明短时换票**：UI / 客户端可在前端透明完成短时 `POST /api/v1/account-secrets` 取得 `sec_xxx` 引用，AI Agent 全程仅接触引用标识符，彻底封堵大模型上下文泄露凭据的通道。
 
 ### 1.3 依赖感知的账户删除模型（Dependency-Checked Account Bundles）
 - **禁止无条件级联删除**：Cypht 的底层模型中，IMAP、SMTP 和 Profile 并不天然是一对一关系。多个账户或 Profile 完全可能共用一个企业 SMTP 发信服务器。
@@ -58,7 +58,7 @@
 
 | 路径与方法 | 对应 Scope | 风险级别 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `POST /api/v1/accounts/secrets` | `accounts.write` | credential | 提交临时敏感凭据，返回短时 `credential_ref` (300s 有效) |
+| `POST /api/v1/account-secrets` | `accounts.write` | credential | 提交临时敏感凭据，返回短时 `credential_ref` (300s 有效) |
 | `GET /api/v1/accounts` | `accounts.read` | read | 列表查询可见账户（脱敏，返回 Opaque ID） |
 | `GET /api/v1/accounts/{id}` | `accounts.read` | read | 查询单个账户详情及健康状态（脱敏） |
 | `POST /api/v1/accounts` | `accounts.write` | write | 一体化新增账户（支持 direct password 或 credential_ref） |
