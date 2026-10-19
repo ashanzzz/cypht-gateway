@@ -114,18 +114,16 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
             return false;
         }
         try {
-            $expected = array();
-            foreach ($sections as $section) {
-                $expected[$section] = $this->get($section, array());
-            }
             $this->save($this->gateway_write_username, $this->gateway_write_key);
             $fresh = new self($this->gateway_site_config);
             $fresh->load($this->gateway_write_username, $this->gateway_write_key, true);
             if ($fresh->decrypt_failed || !$fresh->gateway_revision_loaded) {
                 throw new Gateway_User_Config_Conflict('user-config readback failed');
             }
+            $expected = array();
             $actual = array();
             foreach ($sections as $section) {
+                $expected[$section] = $this->get($section, array());
                 $actual[$section] = $fresh->get($section, array());
                 if (!$this->gateway_values_equal($expected[$section], $actual[$section])) {
                     throw new Gateway_User_Config_Conflict('user-config readback failed');
