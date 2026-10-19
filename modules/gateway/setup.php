@@ -96,6 +96,24 @@ add_handler('ajax_gateway_message_move', 'gateway_message_move', true, 'gateway'
 add_handler('ajax_gateway_message_archive', 'gateway_message_archive', true, 'gateway', 'load_imap_servers_from_config', 'after');
 add_handler('ajax_gateway_message_delete', 'gateway_message_delete', true, 'gateway', 'load_imap_servers_from_config', 'after');
 
+$gateway_account_bundle_handlers = array(
+    'ajax_gateway_account_bundle_test' => 'gateway_account_bundle_test',
+    'ajax_gateway_account_bundle_create' => 'gateway_account_bundle_create',
+    'ajax_gateway_account_bundle_update' => 'gateway_account_bundle_update',
+    'ajax_gateway_account_bundle_delete' => 'gateway_account_bundle_delete'
+);
+foreach ($gateway_account_bundle_handlers as $page => $handler) {
+    setup_base_ajax_page($page, 'core');
+    if (function_exists('replace_module')) { replace_module('handler', 'login', 'gateway_login', $page); }
+    add_handler($page, 'gateway_guard', true, 'gateway', 'load_user_data', 'after');
+    add_handler($page, 'load_imap_servers_from_config', true, 'imap', 'gateway_guard', 'after');
+    add_handler($page, 'imap_oauth2_token_check', true, 'imap', 'load_imap_servers_from_config', 'after');
+    add_handler($page, 'load_smtp_servers_from_config', true, 'smtp', 'load_imap_servers_from_config', 'after');
+    add_handler($page, 'compose_profile_data', true, 'profiles', 'load_smtp_servers_from_config', 'after');
+    add_handler($page, $handler, true, 'gateway', 'compose_profile_data', 'after');
+    $gateway_pages[] = $page;
+}
+
 $gateway_contact_handlers = array(
     'ajax_gateway_contacts' => 'gateway_contacts',
     'ajax_gateway_contact' => 'gateway_contact',

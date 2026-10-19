@@ -110,11 +110,21 @@ class Hm_Handler_gateway_ping extends Hm_Handler_Module {
         if (method_exists($this, 'module_is_supported') && $this->module_is_supported('feeds')) {
             $capabilities[] = 'feeds.read.v1';
         }
+        $account_modules = method_exists($this, 'module_is_supported') &&
+            $this->module_is_supported('imap') &&
+            $this->module_is_supported('smtp') &&
+            $this->module_is_supported('profiles');
+        if ($account_modules) {
+            $capabilities[] = 'accounts.test.v1';
+        }
         $durable = isset($this->user_config) && is_object($this->user_config) &&
             method_exists($this->user_config, 'gateway_storage_is_safe') &&
             $this->user_config->gateway_storage_is_safe() === true;
         if ($durable) {
             $capabilities[] = 'user_config.durable.v1';
+            if ($account_modules) {
+                $capabilities[] = 'accounts.write.v1';
+            }
             $capabilities[] = 'contacts.write.v1';
             $capabilities[] = 'tags.write.v1';
             $capabilities[] = 'calendar.write.v1';

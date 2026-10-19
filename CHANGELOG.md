@@ -4,6 +4,13 @@ All notable changes to this project will be documented here. The project follows
 
 ## [Unreleased] - 2026-10-17
 
+### PHP Bridge Multi-Section Account Bundle Transaction (PR 8.2)
+- **Cohesive Account Bundle Mutation Handlers**: Implemented `account_handlers.php` across both mirrored modules providing `create`, `update`, `delete`, and non-persisting candidate `test` operations on Cypht account bundles.
+- **Multi-Section User Config Durability**: Extended `Gateway_User_Config_File` and `gateway_commit_durable_user_config` with atomic multi-section writes across `imap_servers`, `smtp_servers`, and `profiles` under a single exclusive lock with snapshot comparison, atomic save, and fresh readback verification.
+- **Dependency-Checked Safe Deletion**: Enforced fail-closed deletion refusing removal when SMTP or profile references are shared with other accounts, normalizing default profiles after deletion.
+- **Dynamic Account Capabilities**: Advertised `accounts.test.v1` and `accounts.write.v1` in Bridge capability handshake based on underlying module support and durable storage safety.
+- **Integration Tests & Roadmap Ledger**: Added `tests/bridge_accounts.php` and `tests/cypht_account_bundle_persistence.php` to CI/Release suites, and integrated `docs/PR8_TO_V1_IMPLEMENTATION_MAP.md` and `docs/COMPLETION_STATUS.md`.
+
 ### Account Lifecycle Core Models & Migration v2 (PR 8.1)
 - **Protocol-Neutral Account Models (`crates/gateway-core`)**: Established `ManagedAccount`, `AccountEndpoint`, `AccountSecurity`, `AccountIdentity`, and `AccountHealth` representing public account lifecycle states without leaking Cypht-internal implementation IDs into the public contract.
 - **Storage Migration v2 (`crates/gateway-storage`)**: Upgraded `CURRENT_SCHEMA_VERSION` to 2 with transactional DDL introducing `gateway_account_bindings` (with active uniqueness and retirement semantics) and `gateway_account_bundles` (mapping managed accounts to Cypht IMAP/SMTP/profile resources).

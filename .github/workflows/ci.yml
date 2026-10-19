@@ -38,6 +38,7 @@ jobs:
           php tests/bridge_contract.php
           php tests/bridge_capabilities.php
           php tests/bridge_persistence_guard.php
+          php tests/bridge_accounts.php
       - name: Checkout pinned Cypht 2.13.0 source
         uses: actions/checkout@v4
         with:
@@ -60,6 +61,7 @@ jobs:
           php tests/bridge_calendar.php
           php tests/bridge_sieve_status.php
           php tests/cypht_user_config_persistence.php
+          php tests/cypht_account_bundle_persistence.php
       - name: Cypht 2.12.0 compatibility smoke
         run: |
           curl --fail --location --retry 3 https://codeload.github.com/cypht-org/cypht/zip/refs/tags/v2.12.0 -o /tmp/cypht-v2.12.0.zip
@@ -72,6 +74,7 @@ jobs:
           php tests/cypht_contacts_repo.php
           php tests/bridge_tags.php
           php tests/cypht_user_config_persistence.php
+          php tests/cypht_account_bundle_persistence.php
       - name: Reject missing or shared Cypht Bridge keys
         run: |
           sh -n docker/cypht-gateway-entrypoint.sh

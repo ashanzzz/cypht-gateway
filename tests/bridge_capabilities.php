@@ -69,4 +69,18 @@ foreach ($durable_write_capabilities as $capability) {
     gateway_assert_capability($caps, $capability, true);
 }
 
+class TestPingHandlerAccountModules extends Hm_Handler_gateway_ping {
+    public $user_config;
+    public function __construct() { $this->user_config = new TestMockDurableConfig(); }
+    public function module_is_supported($name) {
+        return in_array($name, array('imap', 'smtp', 'profiles'), true);
+    }
+}
+$caps = gateway_test_capabilities(new TestPingHandlerNoFeeds());
+gateway_assert_capability($caps, 'accounts.test.v1', false);
+gateway_assert_capability($caps, 'accounts.write.v1', false);
+$caps = gateway_test_capabilities(new TestPingHandlerAccountModules());
+gateway_assert_capability($caps, 'accounts.test.v1', true);
+gateway_assert_capability($caps, 'accounts.write.v1', true);
+
 echo "Bridge capability present/missing behavioral test ok\n";

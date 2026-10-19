@@ -179,6 +179,17 @@ function gateway_commit_durable_user_config($handler, $section, $snapshot) {
         if (!is_array($values)) {
             throw new RuntimeException('user-config commit verification failed');
         }
+        if (is_array($section)) {
+            foreach ($section as $name) {
+                if (!array_key_exists($name, $values) || !is_array($values[$name])) {
+                    throw new RuntimeException('multi-section user-config commit verification failed');
+                }
+                $snapshot[$name] = $values[$name];
+            }
+            $handler->session->set('user_data', $snapshot);
+            Hm_Gateway_Response::clear_user_config_write();
+            return $values;
+        }
         $snapshot[$section] = $values;
         $handler->session->set('user_data', $snapshot);
         Hm_Gateway_Response::clear_user_config_write();
@@ -191,7 +202,8 @@ function gateway_commit_durable_user_config($handler, $section, $snapshot) {
         }
         gateway_json_error('durable user-config write failed', 502);
     }
-}}
+}
+}
 
 if (!hm_exists('gateway_safe_account')) {
 function gateway_safe_account($id, $server, $can_send = false) {

@@ -13,7 +13,7 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
     private $gateway_revision_username;
     private $gateway_write_username;
     private $gateway_write_key;
-    private $gateway_write_section;
+    private $gateway_write_sections = array();
     private $gateway_write_active = false;
 
     public function __construct($config) {
@@ -50,10 +50,10 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
         $this->gateway_revision_loaded = false;
     }
 
-    public function gateway_begin_write($username, $key, $section, $session_snapshot) {
-        if ($this->gateway_write_active || !is_string($username) || $username === '' ||
-            !is_string($key) || $key === '' || !is_string($section) || $section === '' ||
-            !is_array($session_snapshot)) {
+    public function gateway_begin_write($username, $key, $sections, $session_snapshot) {
+        $sections = $this->gateway_normalize_sections($sections);
+        if ($this->gateway_write_active || !$sections || !is_string($username) || $username === '' ||
+            !is_string($key) || $key === '' || !is_array($session_snapshot)) {
             return false;
         }
         $this->gateway_lock_handle = $this->gateway_acquire_lock($username, LOCK_EX);
@@ -63,11 +63,13 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
             if ($fresh->decrypt_failed || !$fresh->gateway_revision_loaded) {
                 throw new RuntimeException('user-config could not be loaded');
             }
-            $stored = $fresh->get($section, array());
-            $session_value = array_key_exists($section, $session_snapshot)
-                ? $session_snapshot[$section] : array();
-            if (!$this->gateway_values_equal($stored, $session_value)) {
-                throw new Gateway_User_Config_Conflict('stale user-config snapshot');
+            foreach ($sections as $section) {
+                $stored = $fresh->get($section, array());
+                $session_value = array_key_exists($section, $session_snapshot)
+                    ? $session_snapshot[$section] : array();
+                if (!$this->gateway_values_equal($stored, $session_value)) {
+                    throw new Gateway_User_Config_Conflict('stale user-config snapshot');
+                }
             }
             parent::reload($fresh->dump(), $username);
             $this->gateway_revision = $fresh->gateway_revision;
@@ -75,7 +77,7 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
             $this->gateway_revision_loaded = $fresh->gateway_revision_loaded;
             $this->gateway_write_username = $username;
             $this->gateway_write_key = $key;
-            $this->gateway_write_section = $section;
+            $this->gateway_write_sections = $sections;
             $this->gateway_write_active = true;
             return true;
         } catch (Throwable $error) {
@@ -84,23 +86,56 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
         }
     }
 
-    public function gateway_commit_write($section) {
-        if (!$this->gateway_write_active || $section !== $this->gateway_write_section) {
+    public function gateway_set_write_section($section, $value) {
+        if (!$this->gateway_write_active || !is_string($section) ||
+            !in_array($section, $this->gateway_write_sections, true) || !is_array($value)) {
+            return false;
+        }
+        $this->config[$section] = $value;
+        return true;
+    }
+
+    private function gateway_normalize_sections($sections) {
+        if (is_string($sections)) $sections = array($sections);
+        if (!is_array($sections) || !$sections) return false;
+        $normalized = array();
+        foreach ($sections as $section) {
+            if (!is_string($section) || $section === '') return false;
+            $normalized[$section] = true;
+        }
+        $normalized = array_keys($normalized);
+        sort($normalized, SORT_STRING);
+        return $normalized;
+    }
+
+    public function gateway_commit_write($sections) {
+        $sections = $this->gateway_normalize_sections($sections);
+        if (!$this->gateway_write_active || !$sections || $sections !== $this->gateway_write_sections) {
             return false;
         }
         try {
+            $expected = array();
+            foreach ($sections as $section) {
+                $expected[$section] = $this->get($section, array());
+            }
             $this->save($this->gateway_write_username, $this->gateway_write_key);
             $fresh = new self($this->gateway_site_config);
             $fresh->load($this->gateway_write_username, $this->gateway_write_key, true);
-            $expected = $this->get($section, array());
-            $actual = $fresh->get($section, array());
-            if ($fresh->decrypt_failed || !$this->gateway_values_equal($expected, $actual)) {
+            if ($fresh->decrypt_failed || !$fresh->gateway_revision_loaded) {
                 throw new Gateway_User_Config_Conflict('user-config readback failed');
+            }
+            $actual = array();
+            foreach ($sections as $section) {
+                $actual[$section] = $fresh->get($section, array());
+                if (!$this->gateway_values_equal($expected[$section], $actual[$section])) {
+                    throw new Gateway_User_Config_Conflict('user-config readback failed');
+                }
             }
             parent::reload($fresh->dump(), $this->gateway_write_username);
             $this->gateway_revision = $fresh->gateway_revision;
             $this->gateway_revision_username = $this->gateway_write_username;
             $this->gateway_revision_loaded = $fresh->gateway_revision_loaded;
+            if (count($sections) === 1) return $actual[$sections[0]];
             return $actual;
         } finally {
             $this->gateway_release_write();
@@ -173,7 +208,7 @@ class Gateway_User_Config_File extends Hm_User_Config_File {
         $this->gateway_lock_handle = null;
         $this->gateway_write_username = null;
         $this->gateway_write_key = null;
-        $this->gateway_write_section = null;
+        $this->gateway_write_sections = array();
         $this->gateway_write_active = false;
     }
 
