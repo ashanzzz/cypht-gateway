@@ -85,6 +85,7 @@ $writerA = bundle_config($site, $key);
 $writerB = bundle_config($site, $key);
 $stale = $writerB->dump();
 $writerA->set('smtp_servers', array('smtp-new' => array('id' => 'smtp-new')));
+$writerA->save('alice', $key);
 try {
     $writerB->gateway_begin_write('alice', $key, $sections, $stale);
     throw new RuntimeException('stale multi-section writer was accepted');
