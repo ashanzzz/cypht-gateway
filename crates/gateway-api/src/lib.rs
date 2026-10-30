@@ -13,7 +13,7 @@ use axum::{
     },
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use gateway_auth::{Principal, DEFAULT_AI_SCOPES};
