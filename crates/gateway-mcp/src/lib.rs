@@ -474,7 +474,6 @@ impl CyphtMcpServer {
         let path = format!("/api/v1/accounts/{}", input.account_id);
         self.get_json_value_with(Method::PATCH, &path, &ctx, &body)
             .await
-            .map(pretty)
     }
 
     #[tool(
