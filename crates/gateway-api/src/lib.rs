@@ -13,15 +13,15 @@ use axum::{
     },
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use gateway_auth::{Principal, DEFAULT_AI_SCOPES};
 use gateway_core::{
-    ApiErrorBody, ApiErrorDetail, BuildInfo, ContactCreateRequest, ContactUpdateRequest,
-    CreateTokenRequest, ForwardMessageRequest, GatewayError, LoginRequest, MeResponse,
-    MessageUpdateRequest, MoveMessageRequest, ReplyMessageRequest, SearchRequest,
-    SendMessageRequest,
+    AccountCreateRequest, AccountSecretRequest, AccountUpdateRequest, ApiErrorBody, ApiErrorDetail,
+    BuildInfo, ContactCreateRequest, ContactUpdateRequest, CreateTokenRequest,
+    ForwardMessageRequest, GatewayError, LoginRequest, MeResponse, MessageUpdateRequest,
+    MoveMessageRequest, ReplyMessageRequest, SearchRequest, SendMessageRequest,
 };
 use gateway_domain::GatewayService;
 use serde::Deserialize;
@@ -60,7 +60,15 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/audit", get(audit))
         .route("/api/v1/tokens", get(tokens_list).post(tokens_create))
         .route("/api/v1/tokens/{id}", delete(tokens_revoke))
-        .route("/api/v1/accounts", get(accounts))
+        .route("/api/v1/account-secrets", post(account_secret_create))
+        .route("/api/v1/accounts", get(accounts).post(account_create))
+        .route(
+            "/api/v1/accounts/{id}",
+            get(account_read)
+                .patch(account_update)
+                .delete(account_delete),
+        )
+        .route("/api/v1/accounts/{id}/test", post(account_test))
         .route("/api/v1/contacts", get(contacts).post(contact_create))
         .route(
             "/api/v1/contacts/{id}",
@@ -267,6 +275,90 @@ async fn accounts(
 ) -> ApiResult<impl IntoResponse> {
     let principal = principal(&state, &headers)?;
     Ok(Json(state.service.accounts(&principal).await?))
+}
+
+async fn account_secret_create(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<AccountSecretRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    use zeroize::Zeroizing;
+    let pw = Zeroizing::new(request.password);
+    let response = state.service.account_secret_store(&principal, pw)?;
+    Ok((StatusCode::CREATED, Json(response)))
+}
+
+async fn account_create(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<AccountCreateRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(state.service.account_create(&principal, request).await?),
+    ))
+}
+
+async fn account_read(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    // Return the account from the list, filtered by id.
+    let accounts = state.service.accounts(&principal).await?;
+    let account = accounts
+        .into_iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| GatewayError::NotFound("account not found".into()))?;
+    Ok(Json(account))
+}
+
+async fn account_update(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(request): Json<AccountUpdateRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    Ok(Json(
+        state
+            .service
+            .account_update(&principal, &id, request)
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct AccountDeleteQuery {
+    #[serde(default)]
+    confirm: bool,
+}
+
+async fn account_delete(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(params): Query<AccountDeleteQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    state
+        .service
+        .account_delete(&principal, &id, params.confirm)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn account_test(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(request): Json<AccountCreateRequest>,
+) -> ApiResult<impl IntoResponse> {
+    let principal = principal(&state, &headers)?;
+    let result = state.service.account_test(&principal, request).await?;
+    Ok(Json(result))
 }
 
 #[derive(Debug, Deserialize)]

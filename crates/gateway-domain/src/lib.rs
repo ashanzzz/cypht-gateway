@@ -9,20 +9,24 @@ mod sieve;
 mod tags;
 
 use gateway_auth::{
-    AuthKind, AuthService, Credential, CyphtSession, Principal, SCOPE_ACCOUNTS_READ,
-    SCOPE_ATTACHMENTS_READ, SCOPE_AUDIT_READ, SCOPE_CONTACTS_READ, SCOPE_CONTACTS_WRITE,
-    SCOPE_MAIL_DELETE, SCOPE_MAIL_MODIFY, SCOPE_MAIL_READ, SCOPE_MAIL_SEARCH, SCOPE_MAIL_SEND,
+    AuthKind, AuthService, Credential, CyphtSession, Principal, SecretVault,
+    SCOPE_ACCOUNTS_CREDENTIALS, SCOPE_ACCOUNTS_DELETE, SCOPE_ACCOUNTS_READ, SCOPE_ACCOUNTS_TEST,
+    SCOPE_ACCOUNTS_WRITE, SCOPE_ATTACHMENTS_READ, SCOPE_AUDIT_READ, SCOPE_CONTACTS_READ,
+    SCOPE_CONTACTS_WRITE, SCOPE_MAIL_DELETE, SCOPE_MAIL_MODIFY, SCOPE_MAIL_READ, SCOPE_MAIL_SEARCH,
+    SCOPE_MAIL_SEND,
 };
 use gateway_core::{
-    Account, ActionResult, Address, Attachment, AttachmentDownload, AuditPage, Contact,
-    ContactCreateRequest, ContactUpdateRequest, CreatedToken, ForwardMessageRequest, GatewayError,
-    GatewayResult, LoginResponse, MailWriteResult, Mailbox, Message, MessageBody, MessagePage,
-    MessageSummary, MessageUpdateRequest, MoveMessageRequest, ObjectIdCodec, ObjectKind, Profile,
-    ReplyMessageRequest, SearchRequest, SendMessageRequest, TokenMetadata, Upload,
+    Account, AccountCreateRequest, AccountSecretResponse, AccountUpdateRequest, ActionResult,
+    Address, Attachment, AttachmentDownload, AuditPage, Contact, ContactCreateRequest,
+    ContactUpdateRequest, CreatedToken, ForwardMessageRequest, GatewayError, GatewayResult,
+    LoginResponse, MailWriteResult, Mailbox, ManagedAccountDetail, Message, MessageBody,
+    MessagePage, MessageSummary, MessageUpdateRequest, MoveMessageRequest, ObjectIdCodec,
+    ObjectKind, Profile, ReplyMessageRequest, SearchRequest, SendMessageRequest, TokenMetadata,
+    Upload,
 };
 use gateway_cypht::{
-    BridgeAccount, BridgeActionResult, BridgeContact, BridgeMessage, BridgeMessagePage,
-    BridgeMessageSummary, BridgeWriteResult, CyphtClient,
+    BridgeAccount, BridgeAccountBundleRead, BridgeActionResult, BridgeContact, BridgeMessage,
+    BridgeMessagePage, BridgeMessageSummary, BridgeWriteResult, CyphtClient,
 };
 use gateway_storage::{Store, StoredIdempotency, StoredObjectRef};
 use serde::Serialize;
@@ -35,6 +39,7 @@ pub struct GatewayService {
     cypht: CyphtClient,
     ids: ObjectIdCodec,
     store: Store,
+    secrets: SecretVault,
 }
 
 impl GatewayService {
@@ -44,6 +49,7 @@ impl GatewayService {
             cypht,
             ids,
             store,
+            secrets: SecretVault::new(),
         }
     }
 
@@ -452,6 +458,239 @@ impl GatewayService {
             None,
         );
         Ok(result)
+    }
+
+    /// Store a password and return an opaque credential reference for MCP-safe account operations.
+    pub fn account_secret_store(
+        &self,
+        principal: &Principal,
+        password: zeroize::Zeroizing<String>,
+    ) -> GatewayResult<AccountSecretResponse> {
+        principal.requires(SCOPE_ACCOUNTS_CREDENTIALS)?;
+        let ref_id = self.secrets.store(&principal.username, password);
+        Ok(AccountSecretResponse {
+            credential_ref: ref_id,
+            expires_in: 300,
+        })
+    }
+
+    /// Create a managed account bundle (IMAP + optional SMTP + optional Profile).
+    pub async fn account_create(
+        &self,
+        principal: &Principal,
+        mut request: AccountCreateRequest,
+    ) -> GatewayResult<ManagedAccountDetail> {
+        let result = self.account_create_inner(principal, &mut request).await;
+        self.audit(
+            &principal.username,
+            principal.auth_id.as_deref(),
+            "accounts.create",
+            result.as_ref().ok().map(|a| a.id.as_str()),
+            result.is_ok(),
+            None,
+        );
+        result
+    }
+
+    async fn account_create_inner(
+        &self,
+        principal: &Principal,
+        request: &mut AccountCreateRequest,
+    ) -> GatewayResult<ManagedAccountDetail> {
+        principal.requires(SCOPE_ACCOUNTS_WRITE)?;
+        // Resolve credential_ref if provided.
+        self.resolve_credential_ref_in_endpoint(principal, &mut request.inbound)?;
+        if let Some(outbound) = &mut request.outbound {
+            self.resolve_credential_ref_in_endpoint(principal, outbound)?;
+        }
+        let session = self.ensure_cypht_session(principal).await?;
+        let payload = serde_json::to_value(&request)
+            .map_err(|e| GatewayError::Internal(format!("encode account create: {e}")))?;
+        let bundle = self
+            .cypht
+            .account_bundle_create(&session, &principal.credential, &payload)
+            .await?;
+        Ok(self.map_bundle_to_detail(&bundle))
+    }
+
+    /// Update a managed account bundle by opaque public ID.
+    pub async fn account_update(
+        &self,
+        principal: &Principal,
+        public_id: &str,
+        mut request: AccountUpdateRequest,
+    ) -> GatewayResult<ManagedAccountDetail> {
+        let result = self
+            .account_update_inner(principal, public_id, &mut request)
+            .await;
+        self.audit(
+            &principal.username,
+            principal.auth_id.as_deref(),
+            "accounts.update",
+            Some(public_id),
+            result.is_ok(),
+            None,
+        );
+        result
+    }
+
+    async fn account_update_inner(
+        &self,
+        principal: &Principal,
+        public_id: &str,
+        request: &mut AccountUpdateRequest,
+    ) -> GatewayResult<ManagedAccountDetail> {
+        principal.requires(SCOPE_ACCOUNTS_WRITE)?;
+        if let Some(inbound) = &mut request.inbound {
+            self.resolve_credential_ref_in_endpoint(principal, inbound)?;
+        }
+        if let Some(outbound) = &mut request.outbound {
+            self.resolve_credential_ref_in_endpoint(principal, outbound)?;
+        }
+        let (imap_id, smtp_id) = self.decode_account_internal_ids(principal, public_id)?;
+        let session = self.ensure_cypht_session(principal).await?;
+        let mut payload = serde_json::to_value(&request)
+            .map_err(|e| GatewayError::Internal(format!("encode account update: {e}")))?;
+        payload["imap_id"] = serde_json::Value::String(imap_id);
+        if let Some(smtp) = smtp_id {
+            payload["smtp_id"] = serde_json::Value::String(smtp);
+        }
+        let bundle = self
+            .cypht
+            .account_bundle_update(&session, &principal.credential, &payload)
+            .await?;
+        Ok(self.map_bundle_to_detail(&bundle))
+    }
+
+    /// Delete a managed account bundle by opaque public ID (dependency-checked).
+    pub async fn account_delete(
+        &self,
+        principal: &Principal,
+        public_id: &str,
+        confirm: bool,
+    ) -> GatewayResult<()> {
+        let result = self
+            .account_delete_inner(principal, public_id, confirm)
+            .await;
+        self.audit(
+            &principal.username,
+            principal.auth_id.as_deref(),
+            "accounts.delete",
+            Some(public_id),
+            result.is_ok(),
+            None,
+        );
+        result
+    }
+
+    async fn account_delete_inner(
+        &self,
+        principal: &Principal,
+        public_id: &str,
+        confirm: bool,
+    ) -> GatewayResult<()> {
+        principal.requires(SCOPE_ACCOUNTS_DELETE)?;
+        if !confirm {
+            return Err(GatewayError::InvalidRequest(
+                "account deletion requires confirm=true".into(),
+            ));
+        }
+        let (imap_id, smtp_id) = self.decode_account_internal_ids(principal, public_id)?;
+        let session = self.ensure_cypht_session(principal).await?;
+        let mut payload = serde_json::json!({ "confirm": true, "imap_id": imap_id });
+        if let Some(smtp) = smtp_id {
+            payload["smtp_id"] = serde_json::Value::String(smtp);
+        }
+        self.cypht
+            .account_bundle_delete(&session, &principal.credential, &payload)
+            .await?;
+        Ok(())
+    }
+
+    /// Test connectivity for a candidate account configuration (no persistence).
+    pub async fn account_test(
+        &self,
+        principal: &Principal,
+        mut request: AccountCreateRequest,
+    ) -> GatewayResult<serde_json::Value> {
+        let result = self.account_test_inner(principal, &mut request).await;
+        self.audit(
+            &principal.username,
+            principal.auth_id.as_deref(),
+            "accounts.test",
+            None,
+            result.is_ok(),
+            None,
+        );
+        result
+    }
+
+    async fn account_test_inner(
+        &self,
+        principal: &Principal,
+        request: &mut AccountCreateRequest,
+    ) -> GatewayResult<serde_json::Value> {
+        principal.requires(SCOPE_ACCOUNTS_TEST)?;
+        self.resolve_credential_ref_in_endpoint(principal, &mut request.inbound)?;
+        if let Some(outbound) = &mut request.outbound {
+            self.resolve_credential_ref_in_endpoint(principal, outbound)?;
+        }
+        let session = self.ensure_cypht_session(principal).await?;
+        let payload = serde_json::to_value(&request)
+            .map_err(|e| GatewayError::Internal(format!("encode account test: {e}")))?;
+        self.cypht.account_bundle_test(&session, &payload).await
+    }
+
+    /// Resolve a credential_ref in an AccountEndpointRequest, replacing it with the password.
+    fn resolve_credential_ref_in_endpoint(
+        &self,
+        principal: &Principal,
+        endpoint: &mut gateway_core::AccountEndpointRequest,
+    ) -> GatewayResult<()> {
+        if let Some(ref_id) = endpoint.credential_ref.take() {
+            let pw = self
+                .secrets
+                .consume(&principal.username, &ref_id)
+                .ok_or_else(|| {
+                    GatewayError::PermissionDenied(
+                        "credential_ref is invalid, expired, or already used".into(),
+                    )
+                })?;
+            endpoint.password = Some(pw.as_str().to_string());
+        }
+        Ok(())
+    }
+
+    /// Decode internal IMAP/SMTP IDs from a public account ID.
+    fn decode_account_internal_ids(
+        &self,
+        principal: &Principal,
+        public_id: &str,
+    ) -> GatewayResult<(String, Option<String>)> {
+        let decoded =
+            self.ids
+                .decode_private(ObjectKind::Account, &principal.username, public_id)?;
+        // Parts: ["cypht", imap_id] or ["cypht", imap_id, smtp_id]
+        let imap_id = decoded
+            .parts
+            .get(1)
+            .cloned()
+            .ok_or_else(|| GatewayError::NotFound("account not found".into()))?;
+        let smtp_id = decoded.parts.get(2).cloned();
+        Ok((imap_id, smtp_id))
+    }
+
+    /// Map a BridgeAccountBundleRead to a ManagedAccountDetail response.
+    fn map_bundle_to_detail(&self, bundle: &BridgeAccountBundleRead) -> ManagedAccountDetail {
+        ManagedAccountDetail {
+            id: bundle.imap_id.clone(),
+            name: bundle.name.clone(),
+            email: bundle.identity.as_ref().map(|i| i.email.clone()),
+            protocol: "imap".to_string(),
+            server: bundle.imap.as_ref().map(|i| i.host.clone()),
+            can_send: bundle.smtp.is_some(),
+            managed: true,
+        }
     }
 
     pub async fn profiles(&self, principal: &Principal) -> GatewayResult<Vec<Profile>> {

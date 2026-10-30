@@ -62,6 +62,13 @@ capabilities:
     cli: "cyphtctl audit"
     mcp: audit_list
     risk: read
+  account.secret.create:
+    scope: accounts.credentials.write
+    backend_capabilities:
+      - accounts.write.v1
+      - user_config.durable.v1
+    api: "POST /api/v1/account-secrets"
+    risk: credential
   account.list:
     scope: accounts.read
     backend_capabilities:
@@ -71,6 +78,58 @@ capabilities:
     api: "GET /api/v1/accounts"
     cli: "cyphtctl accounts"
     mcp: mail_list_accounts
+    risk: read
+  account.read:
+    scope: accounts.read
+    backend_capabilities:
+      - accounts.read.v1
+    tool:
+      annotation: read
+    api: "GET /api/v1/accounts/{id}"
+    cli: "cyphtctl account-read"
+    risk: read
+  account.create:
+    scope: accounts.write
+    backend_capabilities:
+      - accounts.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: write
+    api: "POST /api/v1/accounts"
+    cli: "cyphtctl account-create"
+    mcp: mail_add_account
+    risk: write
+  account.update:
+    scope: accounts.write
+    backend_capabilities:
+      - accounts.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: update
+    api: "PATCH /api/v1/accounts/{id}"
+    cli: "cyphtctl account-update"
+    mcp: mail_update_account
+    risk: write
+  account.delete:
+    scope: accounts.delete
+    backend_capabilities:
+      - accounts.write.v1
+      - user_config.durable.v1
+    tool:
+      annotation: destructive
+    api: "DELETE /api/v1/accounts/{id}"
+    cli: "cyphtctl account-delete"
+    mcp: mail_delete_account
+    risk: destructive
+  account.test:
+    scope: accounts.test
+    backend_capabilities:
+      - accounts.test.v1
+    tool:
+      annotation: read
+    api: "POST /api/v1/accounts/{id}/test"
+    cli: "cyphtctl account-test"
+    mcp: mail_test_account
     risk: read
   contact.list:
     scope: contacts.read

@@ -37,6 +37,67 @@ enum Commands {
     },
     Me,
     Accounts,
+    AccountRead {
+        id: String,
+    },
+    AccountCreate {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        imap_host: String,
+        #[arg(long, default_value_t = 993)]
+        imap_port: u16,
+        #[arg(long, default_value = "tls", value_parser = ["tls", "start_tls"])]
+        imap_security: String,
+        #[arg(long)]
+        imap_username: String,
+        /// Password is read from CYPHT_ACCOUNT_PASSWORD env var or prompted interactively.
+        #[arg(long, env = "CYPHT_ACCOUNT_PASSWORD")]
+        imap_password: Option<String>,
+        #[arg(long)]
+        smtp_host: Option<String>,
+        #[arg(long, default_value_t = 587)]
+        smtp_port: u16,
+        #[arg(long, default_value = "start_tls", value_parser = ["tls", "start_tls"])]
+        smtp_security: String,
+        #[arg(long)]
+        smtp_username: Option<String>,
+        #[arg(long, env = "CYPHT_SMTP_PASSWORD")]
+        smtp_password: Option<String>,
+        #[arg(long)]
+        identity_name: Option<String>,
+        #[arg(long)]
+        identity_email: Option<String>,
+    },
+    AccountDelete {
+        id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    AccountTest {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        imap_host: String,
+        #[arg(long, default_value_t = 993)]
+        imap_port: u16,
+        #[arg(long, default_value = "tls", value_parser = ["tls", "start_tls"])]
+        imap_security: String,
+        #[arg(long)]
+        imap_username: String,
+        #[arg(long, env = "CYPHT_ACCOUNT_PASSWORD")]
+        imap_password: Option<String>,
+        #[arg(long)]
+        smtp_host: Option<String>,
+        #[arg(long, default_value_t = 587)]
+        smtp_port: u16,
+        #[arg(long, default_value = "start_tls", value_parser = ["tls", "start_tls"])]
+        smtp_security: String,
+        #[arg(long)]
+        smtp_username: Option<String>,
+        #[arg(long, env = "CYPHT_SMTP_PASSWORD")]
+        smtp_password: Option<String>,
+    },
     Contacts {
         #[arg(long)]
         query: Option<String>,
@@ -370,6 +431,113 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Accounts => {
             print_json(
                 auth(&token, client.get(format!("{base}/api/v1/accounts")))?
+                    .send()
+                    .await?,
+            )
+            .await?
+        }
+        Commands::AccountRead { id } => {
+            print_json(
+                auth(&token, client.get(format!("{base}/api/v1/accounts/{id}")))?
+                    .send()
+                    .await?,
+            )
+            .await?
+        }
+        Commands::AccountCreate {
+            name,
+            imap_host,
+            imap_port,
+            imap_security,
+            imap_username,
+            imap_password,
+            smtp_host,
+            smtp_port,
+            smtp_security,
+            smtp_username,
+            smtp_password,
+            identity_name,
+            identity_email,
+        } => {
+            let imap_pw = imap_password.unwrap_or_default();
+            let body = serde_json::json!({
+                "name": name,
+                "inbound": {
+                    "host": imap_host,
+                    "port": imap_port,
+                    "security": imap_security,
+                    "username": imap_username,
+                    "password": imap_pw,
+                },
+                "outbound": smtp_host.as_ref().map(|h| serde_json::json!({
+                    "host": h,
+                    "port": smtp_port,
+                    "security": smtp_security,
+                    "username": smtp_username.as_deref().unwrap_or(&imap_username),
+                    "password": smtp_password.as_deref().unwrap_or(&imap_pw),
+                })),
+                "identity": identity_email.as_ref().map(|e| serde_json::json!({
+                    "name": identity_name.as_deref().unwrap_or(&name),
+                    "email": e,
+                })),
+            });
+            print_json(
+                auth(&token, client.post(format!("{base}/api/v1/accounts")))?
+                    .json(&body)
+                    .send()
+                    .await?,
+            )
+            .await?
+        }
+        Commands::AccountDelete { id, yes } => {
+            if !yes {
+                eprintln!("Pass --yes to confirm account deletion");
+                std::process::exit(1);
+            }
+            print_json(
+                auth(
+                    &token,
+                    client.delete(format!("{base}/api/v1/accounts/{id}?confirm=true")),
+                )?
+                .send()
+                .await?,
+            )
+            .await?
+        }
+        Commands::AccountTest {
+            name,
+            imap_host,
+            imap_port,
+            imap_security,
+            imap_username,
+            imap_password,
+            smtp_host,
+            smtp_port,
+            smtp_security,
+            smtp_username,
+            smtp_password,
+        } => {
+            let imap_pw = imap_password.unwrap_or_default();
+            let body = serde_json::json!({
+                "name": name,
+                "inbound": {
+                    "host": imap_host,
+                    "port": imap_port,
+                    "security": imap_security,
+                    "username": imap_username,
+                    "password": imap_pw,
+                },
+                "outbound": smtp_host.as_ref().map(|h| serde_json::json!({
+                    "host": h,
+                    "port": smtp_port,
+                    "security": smtp_security,
+                    "username": smtp_username.as_deref().unwrap_or(&imap_username),
+                    "password": smtp_password.as_deref().unwrap_or(&imap_pw),
+                })),
+            });
+            print_json(
+                auth(&token, client.post(format!("{base}/api/v1/accounts/test")))?
+                    .json(&body)
                     .send()
                     .await?,
             )

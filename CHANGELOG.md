@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
+## [Unreleased] - 2026-10-23
+
+### Account Lifecycle REST API, MCP Tools, CLI & SecretVault (PR 8.3–8.6)
+
+- **SecretVault (crates/gateway-auth/src/secret_vault.rs)**: In-memory, owner-bound, time-limited (300 s) credential reference store. Passwords are held only in memory, never written to SQLite or disk. Each sec_xxx reference is consumed exactly once. Four new scope constants added: ccounts.write, ccounts.delete, ccounts.test, ccounts.credentials.write.
+- **Account Bundle Bridge Adapter (crates/gateway-cypht)**: Added BridgeAccountBundleRead, BridgeAccountEndpoint, BridgeAccountIdentity types and four new CyphtClient methods — ccount_bundle_create, ccount_bundle_update, ccount_bundle_delete, ccount_bundle_test — each gated behind the corresponding Bridge capability (ccounts.write.v1 or ccounts.test.v1).
+- **Protocol-Neutral Request/Response Models (crates/gateway-core)**: Added AccountCreateRequest, AccountUpdateRequest, AccountEndpointRequest, AccountIdentityRequest, AccountSecretRequest, AccountSecretResponse, and ManagedAccountDetail.
+- **Account Domain Service (crates/gateway-domain)**: Added ccount_secret_store, ccount_create, ccount_update, ccount_delete, and ccount_test methods to GatewayService. Credential references are resolved and consumed before Bridge calls. Opaque public IDs are decoded to internal IMAP/SMTP IDs for update/delete. Audit entries are emitted for every mutation.
+- **REST v1 Account CRUD (crates/gateway-api)**: Seven new routes added to the Axum router: POST /api/v1/account-secrets, GET/POST /api/v1/accounts, GET/PATCH/DELETE /api/v1/accounts/{id}, POST /api/v1/accounts/{id}/test.
+- **MCP Account Tools (crates/gateway-mcp)**: Four new tools — mail_add_account, mail_update_account, mail_delete_account, mail_test_account — all gated behind WRITE_TOOLS (require --allow-write). Schemas use credential_ref exclusively; no password field appears in any MCP tool schema.
+- **CLI Account Commands (pps/cyphtctl)**: Added ccount-read, ccount-create, ccount-delete, ccount-test commands. Credentials are accepted from the CYPHT_ACCOUNT_PASSWORD / CYPHT_SMTP_PASSWORD env vars rather than command-line flags to prevent shell history leakage.
+- **OpenAPI & Capability Registry**: Added all new routes and schemas to pi/openapi.yaml; added ccounts.write, ccounts.delete, ccounts.test, ccounts.credentials.write to the scope enum. Added ccount.secret.create, ccount.read, ccount.create, ccount.update, ccount.delete, ccount.test operations to pi/capability-registry.yaml.
+- **Bidirectional Invariant Update**: scripts/check-repository.py updated to enforce exact match at 46 MCP tools (up from 42) and verify all new scope constants appear in OpenAPI.
+
 ## [Unreleased] - 2026-10-17
 
 ### PHP Bridge Multi-Section Account Bundle Transaction (PR 8.2)

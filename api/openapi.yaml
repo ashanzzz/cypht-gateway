@@ -51,10 +51,81 @@ paths:
       operationId: revokeToken
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses: {"204": {description: Revoked}, "404": {$ref: "#/components/responses/Error"}}
+  /account-secrets:
+    post:
+      operationId: createAccountSecret
+      summary: Store a temporary credential reference for MCP-safe account operations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountSecretRequest"
+      responses:
+        "201": {description: Credential reference created, content: {application/json: {schema: {$ref: "#/components/schemas/AccountSecretResponse"}}}}
+        "403": {$ref: "#/components/responses/Error"}
   /accounts:
     get:
       operationId: listAccounts
-      responses: {"200": {description: Configured mail accounts, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Account"}}}}}, "403": {$ref: "#/components/responses/Error"}}
+      responses:
+        "200": {description: Configured mail accounts, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Account"}}}}}
+        "403": {$ref: "#/components/responses/Error"}
+    post:
+      operationId: createAccount
+      summary: Create a new managed mail account bundle (IMAP + optional SMTP + optional Profile).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountCreateRequest"
+      responses:
+        "201": {description: Account created, content: {application/json: {schema: {$ref: "#/components/schemas/ManagedAccountDetail"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /accounts/{id}:
+    get:
+      operationId: readAccount
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Account detail, content: {application/json: {schema: {$ref: "#/components/schemas/Account"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      operationId: updateAccount
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUpdateRequest"
+      responses:
+        "200": {description: Account updated, content: {application/json: {schema: {$ref: "#/components/schemas/ManagedAccountDetail"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    delete:
+      operationId: deleteAccount
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: confirm, in: query, required: true, schema: {type: boolean}}
+      responses:
+        "204": {description: Account deleted}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {description: Account has shared dependencies, $ref: "#/components/responses/Error"}
+  /accounts/{id}/test:
+    post:
+      operationId: testAccount
+      summary: Test connectivity for an existing account without persisting changes.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Test result}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
   /contacts:
     get:
       operationId: listContacts
@@ -398,7 +469,7 @@ components:
       description: New PAT allow-lists require a version-2 account ID returned by GET /accounts. Existing PATs may retain signed v1 account IDs during migration.
     Scope:
       type: string
-      enum: [accounts.read, mail.read, mail.search, attachments.read, mail.send, mail.modify, mail.delete, tokens.manage, audit.read, contacts.read, contacts.write, tags.read, tags.write, searches.read, searches.write, calendar.read, calendar.write, feeds.read, feeds.write, sieve.read]
+      enum: [accounts.read, accounts.write, accounts.delete, accounts.test, accounts.credentials.write, mail.read, mail.search, attachments.read, mail.send, mail.modify, mail.delete, tokens.manage, audit.read, contacts.read, contacts.write, tags.read, tags.write, searches.read, searches.write, calendar.read, calendar.write, feeds.read, feeds.write, sieve.read]
     CreateTokenRequest:
       type: object
       required: [name]
@@ -411,6 +482,61 @@ components:
       type: object
       required: [id, name, protocol, can_send]
       properties: {id: {$ref: "#/components/schemas/ResourceId"}, name: {type: string}, email: {type: [string, "null"]}, protocol: {type: string}, server: {type: [string, "null"]}, can_send: {type: boolean}}
+  AccountEndpointRequest:
+    type: object
+    required: [host, port, security, username]
+    properties:
+      host: {type: string}
+      port: {type: integer, minimum: 1, maximum: 65535}
+      security: {type: string, enum: [tls, start_tls]}
+      username: {type: string}
+      password: {type: string, description: "Direct credential (REST/CLI). Mutually exclusive with credential_ref."}
+      credential_ref: {type: string, description: "Opaque reference from POST /api/v1/account-secrets. Use for MCP-safe operations."}
+  AccountIdentityRequest:
+    type: object
+    required: [name, email]
+    properties:
+      name: {type: string}
+      email: {type: string, format: email}
+      reply_to: {type: [string, "null"]}
+      signature: {type: [string, "null"]}
+  AccountCreateRequest:
+    type: object
+    required: [name, inbound]
+    properties:
+      name: {type: string}
+      inbound: {$ref: "#/components/schemas/AccountEndpointRequest"}
+      outbound: {$ref: "#/components/schemas/AccountEndpointRequest"}
+      identity: {$ref: "#/components/schemas/AccountIdentityRequest"}
+  AccountUpdateRequest:
+    type: object
+    properties:
+      name: {type: [string, "null"]}
+      inbound: {$ref: "#/components/schemas/AccountEndpointRequest"}
+      outbound: {$ref: "#/components/schemas/AccountEndpointRequest"}
+      identity: {$ref: "#/components/schemas/AccountIdentityRequest"}
+  ManagedAccountDetail:
+    type: object
+    required: [id, name, protocol, can_send, managed]
+    properties:
+      id: {$ref: "#/components/schemas/ResourceId"}
+      name: {type: string}
+      email: {type: [string, "null"]}
+      protocol: {type: string}
+      server: {type: [string, "null"]}
+      can_send: {type: boolean}
+      managed: {type: boolean}
+  AccountSecretRequest:
+    type: object
+    required: [password]
+    properties:
+      password: {type: string, description: "Plain-text password. Stored only in memory, never on disk or in logs."}
+  AccountSecretResponse:
+    type: object
+    required: [credential_ref, expires_in]
+    properties:
+      credential_ref: {type: string, description: "Opaque reference. Pass to account operations as credential_ref. Valid for expires_in seconds and consumed once."}
+      expires_in: {type: integer, description: "Seconds until the reference expires (300)."}
     Mailbox:
       type: object
       required: [id, account_id, name, display_name, selectable]

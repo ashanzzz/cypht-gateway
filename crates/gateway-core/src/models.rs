@@ -475,3 +475,80 @@ pub struct AuditPage {
     pub entries: Vec<AuditEntry>,
     pub next_offset: Option<u64>,
 }
+
+/// Endpoint specification for account create/update requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountEndpointRequest {
+    pub host: String,
+    pub port: u16,
+    /// "tls" or "start_tls" only. Plain "none" is rejected by the Bridge.
+    pub security: String,
+    pub username: String,
+    /// Direct credential (REST/CLI only). Mutually exclusive with credential_ref.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    /// Opaque short-lived credential reference (MCP-safe path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential_ref: Option<String>,
+}
+
+/// Identity/profile settings for account create/update requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountIdentityRequest {
+    pub name: String,
+    pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+/// Request body for POST /api/v1/accounts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountCreateRequest {
+    pub name: String,
+    pub inbound: AccountEndpointRequest,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outbound: Option<AccountEndpointRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<AccountIdentityRequest>,
+}
+
+/// Request body for PATCH /api/v1/accounts/{id}.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountUpdateRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inbound: Option<AccountEndpointRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outbound: Option<AccountEndpointRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<AccountIdentityRequest>,
+}
+
+/// Request body for POST /api/v1/account-secrets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountSecretRequest {
+    pub password: String,
+}
+
+/// Response from POST /api/v1/account-secrets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountSecretResponse {
+    /// Opaque reference valid for 300 seconds, consumed once.
+    pub credential_ref: String,
+    pub expires_in: u64,
+}
+
+/// Detailed managed account returned by GET /api/v1/accounts and GET /api/v1/accounts/{id}.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManagedAccountDetail {
+    pub id: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub protocol: String,
+    pub server: Option<String>,
+    pub can_send: bool,
+    pub managed: bool,
+}

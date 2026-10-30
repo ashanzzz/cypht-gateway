@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+zeroize.workspace = true
 chrono.workspace = true
 gateway-auth = { path = "../gateway-auth" }
 gateway-core = { path = "../gateway-core" }

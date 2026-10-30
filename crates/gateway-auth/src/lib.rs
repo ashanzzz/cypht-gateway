@@ -1,3 +1,6 @@
+pub mod secret_vault;
+pub use secret_vault::SecretVault;
+
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
@@ -32,6 +35,10 @@ pub const SCOPE_CALENDAR_WRITE: &str = "calendar.write";
 pub const SCOPE_FEEDS_READ: &str = "feeds.read";
 pub const SCOPE_FEEDS_WRITE: &str = "feeds.write";
 pub const SCOPE_SIEVE_READ: &str = "sieve.read";
+pub const SCOPE_ACCOUNTS_WRITE: &str = "accounts.write";
+pub const SCOPE_ACCOUNTS_DELETE: &str = "accounts.delete";
+pub const SCOPE_ACCOUNTS_TEST: &str = "accounts.test";
+pub const SCOPE_ACCOUNTS_CREDENTIALS: &str = "accounts.credentials.write";
 
 pub const DEFAULT_AI_SCOPES: &[&str] = &[
     SCOPE_ACCOUNTS_READ,

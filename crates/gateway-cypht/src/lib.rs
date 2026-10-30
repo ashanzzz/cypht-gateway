@@ -42,6 +42,37 @@ pub struct BridgeProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeAccountEndpoint {
+    pub protocol: String,
+    pub host: String,
+    pub port: u16,
+    pub security: String,
+    pub username: String,
+    /// Never returned; accepted only on inbound Bundle requests.
+    #[serde(skip_serializing, default)]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeAccountIdentity {
+    pub name: String,
+    pub email: String,
+    pub reply_to: Option<String>,
+    pub signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeAccountBundleRead {
+    pub imap_id: String,
+    pub smtp_id: Option<String>,
+    pub profile_id: Option<String>,
+    pub name: String,
+    pub imap: Option<BridgeAccountEndpoint>,
+    pub smtp: Option<BridgeAccountEndpoint>,
+    pub identity: Option<BridgeAccountIdentity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeMailbox {
     pub name: String,
     pub display_name: String,
@@ -392,6 +423,68 @@ impl CyphtClient {
 
     pub async fn profiles(&self, session: &CyphtSession) -> GatewayResult<Vec<BridgeProfile>> {
         self.get_with_capability(session, CAP_ACCOUNTS_READ, "ajax_gateway_profiles", &[])
+            .await
+    }
+
+    /// Account bundle: create IMAP + SMTP + Profile atomically.
+    pub async fn account_bundle_create(
+        &self,
+        session: &CyphtSession,
+        credential: &Credential,
+        payload: &serde_json::Value,
+    ) -> GatewayResult<BridgeAccountBundleRead> {
+        self.post_user_config_with_capability(
+            session,
+            credential,
+            CAP_ACCOUNTS_WRITE,
+            "ajax_gateway_account_bundle_create",
+            payload,
+        )
+        .await
+    }
+
+    /// Account bundle: update IMAP + SMTP + Profile atomically.
+    pub async fn account_bundle_update(
+        &self,
+        session: &CyphtSession,
+        credential: &Credential,
+        payload: &serde_json::Value,
+    ) -> GatewayResult<BridgeAccountBundleRead> {
+        self.post_user_config_with_capability(
+            session,
+            credential,
+            CAP_ACCOUNTS_WRITE,
+            "ajax_gateway_account_bundle_update",
+            payload,
+        )
+        .await
+    }
+
+    /// Account bundle: dependency-checked delete.
+    pub async fn account_bundle_delete(
+        &self,
+        session: &CyphtSession,
+        credential: &Credential,
+        payload: &serde_json::Value,
+    ) -> GatewayResult<serde_json::Value> {
+        self.post_user_config_with_capability(
+            session,
+            credential,
+            CAP_ACCOUNTS_WRITE,
+            "ajax_gateway_account_bundle_delete",
+            payload,
+        )
+        .await
+    }
+
+    /// Account bundle: candidate connectivity test (no persistence).
+    pub async fn account_bundle_test(
+        &self,
+        session: &CyphtSession,
+        payload: &serde_json::Value,
+    ) -> GatewayResult<serde_json::Value> {
+        self.require_capability(session, CAP_ACCOUNTS_TEST).await?;
+        self.bridge_post(session, "ajax_gateway_account_bundle_test", payload)
             .await
     }
 

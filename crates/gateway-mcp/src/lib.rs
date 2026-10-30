@@ -42,6 +42,9 @@ const WRITE_TOOLS: &[&str] = &[
     "saved_searches_delete",
     "calendar_event_create",
     "calendar_event_delete",
+    "mail_add_account",
+    "mail_update_account",
+    "mail_delete_account",
 ];
 
 #[derive(Clone)]
@@ -59,6 +62,50 @@ pub struct EmptyInput {}
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AccountInput {
     pub account_id: String,
+}
+
+/// Endpoint specification for MCP account operations. Uses credential_ref, never plain password.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct McpAccountEndpoint {
+    pub host: String,
+    pub port: u16,
+    /// Must be "tls" or "start_tls".
+    pub security: String,
+    pub username: String,
+    /// Opaque reference from POST /api/v1/account-secrets. Never pass a raw password here.
+    pub credential_ref: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct McpAccountIdentity {
+    pub name: String,
+    pub email: String,
+    pub reply_to: Option<String>,
+    pub signature: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct McpAccountCreateInput {
+    pub name: String,
+    pub inbound: McpAccountEndpoint,
+    pub outbound: Option<McpAccountEndpoint>,
+    pub identity: Option<McpAccountIdentity>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct McpAccountUpdateInput {
+    pub account_id: String,
+    pub name: Option<String>,
+    pub inbound: Option<McpAccountEndpoint>,
+    pub outbound: Option<McpAccountEndpoint>,
+    pub identity: Option<McpAccountIdentity>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct McpAccountDeleteInput {
+    pub account_id: String,
+    /// Must be true to confirm deletion.
+    pub confirm: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -340,6 +387,167 @@ impl CyphtMcpServer {
         self.get_json_value(Method::GET, "/api/v1/accounts", &ctx, None::<&Value>, None)
             .await
             .map(pretty)
+    }
+
+    #[tool(
+        name = "mail_add_account",
+        description = "Add a new IMAP mail account. Requires accounts.write scope and --allow-write. Use POST /api/v1/account-secrets first to get a credential_ref; never pass a raw password.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false,
+        )
+    )]
+    async fn mail_add_account(
+        &self,
+        Parameters(input): Parameters<McpAccountCreateInput>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<String, String> {
+        // Convert MCP input to the REST request body (credential_ref passes through as-is)
+        let body = serde_json::json!({
+            "name": input.name,
+            "inbound": {
+                "host": input.inbound.host,
+                "port": input.inbound.port,
+                "security": input.inbound.security,
+                "username": input.inbound.username,
+                "credential_ref": input.inbound.credential_ref,
+            },
+            "outbound": input.outbound.as_ref().map(|o| serde_json::json!({
+                "host": o.host,
+                "port": o.port,
+                "security": o.security,
+                "username": o.username,
+                "credential_ref": o.credential_ref,
+            })),
+            "identity": input.identity.as_ref().map(|i| serde_json::json!({
+                "name": i.name,
+                "email": i.email,
+                "reply_to": i.reply_to,
+                "signature": i.signature,
+            })),
+        });
+        self.get_json_value(Method::POST, "/api/v1/accounts", &ctx, Some(&body), None)
+            .await
+            .map(pretty)
+    }
+
+    #[tool(
+        name = "mail_update_account",
+        description = "Update an existing mail account configuration. Requires accounts.write scope and --allow-write. Use credential_ref from POST /api/v1/account-secrets to change credentials.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
+    )]
+    async fn mail_update_account(
+        &self,
+        Parameters(input): Parameters<McpAccountUpdateInput>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<String, String> {
+        let body = serde_json::json!({
+            "name": input.name,
+            "inbound": input.inbound.as_ref().map(|ep| serde_json::json!({
+                "host": ep.host,
+                "port": ep.port,
+                "security": ep.security,
+                "username": ep.username,
+                "credential_ref": ep.credential_ref,
+            })),
+            "outbound": input.outbound.as_ref().map(|ep| serde_json::json!({
+                "host": ep.host,
+                "port": ep.port,
+                "security": ep.security,
+                "username": ep.username,
+                "credential_ref": ep.credential_ref,
+            })),
+            "identity": input.identity.as_ref().map(|i| serde_json::json!({
+                "name": i.name,
+                "email": i.email,
+                "reply_to": i.reply_to,
+                "signature": i.signature,
+            })),
+        });
+        let path = format!("/api/v1/accounts/{}", input.account_id);
+        self.get_json_value_with(Method::PATCH, &path, &ctx, &body)
+            .await
+            .map(pretty)
+    }
+
+    #[tool(
+        name = "mail_delete_account",
+        description = "Delete a managed mail account. Requires accounts.delete scope and --allow-write. confirm must be true. Fails if IMAP/SMTP resources are shared with other accounts.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
+    )]
+    async fn mail_delete_account(
+        &self,
+        Parameters(input): Parameters<McpAccountDeleteInput>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<String, String> {
+        let path = format!(
+            "/api/v1/accounts/{}?confirm={}",
+            input.account_id, input.confirm
+        );
+        self.get_json_value(Method::DELETE, &path, &ctx, None::<&Value>, None)
+            .await
+            .map(|_| "Account deleted".to_string())
+    }
+
+    #[tool(
+        name = "mail_test_account",
+        description = "Test IMAP/SMTP connectivity without persisting any configuration. Requires accounts.test scope. Use credential_ref from POST /api/v1/account-secrets.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
+    )]
+    async fn mail_test_account(
+        &self,
+        Parameters(input): Parameters<McpAccountCreateInput>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<String, String> {
+        let body = serde_json::json!({
+            "name": input.name,
+            "inbound": {
+                "host": input.inbound.host,
+                "port": input.inbound.port,
+                "security": input.inbound.security,
+                "username": input.inbound.username,
+                "credential_ref": input.inbound.credential_ref,
+            },
+            "outbound": input.outbound.as_ref().map(|o| serde_json::json!({
+                "host": o.host,
+                "port": o.port,
+                "security": o.security,
+                "username": o.username,
+                "credential_ref": o.credential_ref,
+            })),
+            "identity": input.identity.as_ref().map(|i| serde_json::json!({
+                "name": i.name,
+                "email": i.email,
+                "reply_to": i.reply_to,
+                "signature": i.signature,
+            })),
+        });
+        self.get_json_value(
+            Method::POST,
+            "/api/v1/accounts/test",
+            &ctx,
+            Some(&body),
+            None,
+        )
+        .await
+        .map(pretty)
     }
 
     #[tool(
