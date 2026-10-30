@@ -667,10 +667,9 @@ impl GatewayService {
         principal: &Principal,
         public_id: &str,
     ) -> GatewayResult<(String, Option<String>)> {
-        let decoded =
-            self.ids
-                .decode_private(ObjectKind::Account, &principal.username, public_id)?;
-        // Parts: ["cypht", imap_id] or ["cypht", imap_id, smtp_id]
+        let decoded = self.decode_cypht_object_id(principal, ObjectKind::Account, public_id)?;
+        // Parts are ["cypht", imap_id] or ["cypht", imap_id, smtp_id] for v1,
+        // or already decoded internal parts for v2 (also starts with "cypht").
         let imap_id = decoded
             .parts
             .get(1)
