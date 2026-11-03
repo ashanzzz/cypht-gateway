@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
+## [0.6.0] - 2026-11-03
+
+### Account Lifecycle SSRF Network Policy (PR 9.1)
+- **Network Policy Module (`crates/gateway-domain/src/network_policy.rs`)**: Added `AccountNetworkPolicy` with `is_forbidden_destination` that blocks loopback, RFC-1918 private ranges, link-local, multicast, CGNAT (100.64/10), benchmarking (198.18/15), reserved (0/8, 240/4), IPv6 ULA (fc00::/7), and link-local (fe80::/10) addresses. All resolved addresses must be acceptable — one poisoned DNS response blocks the entire host. Admin-configured CIDR allowlists allow internal mail servers in controlled environments.
+- **Fail-closed DNS Validation**: `validate_mail_server_host` resolves the target hostname with Tokio's async `lookup_host` before any Bridge call, then runs all resolved IPs through the policy. An empty resolution result is treated as an error. Applied to both `account_create_inner` and `account_test_inner`.
+- **`GatewayService::with_network_policy`**: New constructor accepting a custom `AccountNetworkPolicy` for operator-configured CIDR allowlists; `GatewayService::new` defaults to deny-all private destinations.
+
+### Documentation & Parity
+- **PARITY.md**: Updated Account/server configuration CRUD to `implemented and CI-validated (v0.6.0)` with SSRF policy note; updated MCP tool count from 42 to 46.
+
 ## [Unreleased] - 2026-10-23
 
 ### Account Lifecycle REST API, MCP Tools, CLI & SecretVault (PR 8.3–8.6)

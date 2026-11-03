@@ -29,7 +29,7 @@ This file is the explicit completeness ledger for AI and human maintainers. A ro
 | Sieve filters | redacted status | sieve-status | read-only status tool | status panel | redacted status is implemented locally. Script and filter writes, ManageSieve probing, and live Unraid tests are deferred. |
 | Feeds | read-only subscription metadata | feeds, feed-read | feeds_list, feeds_get | subscription list | read-only metadata implemented; article fetching and feed writes deferred for SSRF protection |
 | Profiles CRUD | list only | list only | list only | selection only | deferred to v0.5+ |
-| Account/server configuration CRUD | no | no | no | no | deferred to v0.5+ |
+| Account/server configuration CRUD (IMAP/SMTP Bundle) | REST CRUD (create/read/update/delete/test) | CLI (account-create/delete/test) | MCP tools (mail_add/update/delete/test_account, credential_ref only) | no | implemented and CI-validated (v0.6.0); SSRF network policy enforced before all outbound connections |
 | General Cypht settings/themes/shortcuts | no | no | no | no | deferred to v0.5+ |
 | PGP/key management | no | no | no | no | deferred to v0.5+ |
 | Password/2FA/admin account management | no | no | intentionally no | no | intentionally outside AI tool surface for now |
@@ -56,7 +56,7 @@ To maintain strict truthfulness, capability status is divided into four distinct
 ### Verification Summary
 
 - **Mail Automation Core**: Implemented and CI-validated. All 13 core mail capabilities (messages, mailboxes, search, send, draft, reply, forward, attachments, uploads, flags, move, archive, delete) pass automated tests.
-- **MCP Server & Wire Annotations**: Implemented and CI-validated. All 42 MCP tools advertise wire-level `ToolAnnotations` and pass bidirectional repository invariants.
+- **MCP Server & Wire Annotations**: Implemented and CI-validated. All 46 MCP tools advertise wire-level `ToolAnnotations` and pass bidirectional repository invariants.
 - **Operation Catalog (PR 6)**: Implemented and CI-validated. Single source of truth with bidirectional equality and method consistency checks.
 - **Versioned Storage Migrations**: Implemented and CI-validated. `PRAGMA user_version` with transactional migrations and fail-closed safety for unknown future schemas.
 - **Contacts, Tags, Saved Searches, Calendar, Sieve**: Implemented locally and CI-validated against source tests. Live Unraid readback and simultaneous native-UI/Gateway writes remain unverified.

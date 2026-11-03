@@ -1,5 +1,6 @@
 mod calendar;
 mod feeds;
+mod network_policy;
 mod saved_search_advanced;
 mod saved_search_ids;
 mod saved_search_validation;
@@ -40,16 +41,34 @@ pub struct GatewayService {
     ids: ObjectIdCodec,
     store: Store,
     secrets: SecretVault,
+    network_policy: network_policy::AccountNetworkPolicy,
 }
 
 impl GatewayService {
     pub fn new(auth: AuthService, cypht: CyphtClient, ids: ObjectIdCodec, store: Store) -> Self {
+        Self::with_network_policy(
+            auth,
+            cypht,
+            ids,
+            store,
+            network_policy::AccountNetworkPolicy::default(),
+        )
+    }
+
+    pub fn with_network_policy(
+        auth: AuthService,
+        cypht: CyphtClient,
+        ids: ObjectIdCodec,
+        store: Store,
+        network_policy: network_policy::AccountNetworkPolicy,
+    ) -> Self {
         Self {
             auth,
             cypht,
             ids,
             store,
             secrets: SecretVault::new(),
+            network_policy,
         }
     }
 
@@ -503,6 +522,12 @@ impl GatewayService {
         if let Some(outbound) = &mut request.outbound {
             self.resolve_credential_ref_in_endpoint(principal, outbound)?;
         }
+        // SSRF: validate all target hostnames before contacting them.
+        self.validate_mail_server_host(&request.inbound.host)
+            .await?;
+        if let Some(outbound) = &request.outbound {
+            self.validate_mail_server_host(&outbound.host).await?;
+        }
         let session = self.ensure_cypht_session(principal).await?;
         let payload = serde_json::to_value(&request)
             .map_err(|e| GatewayError::Internal(format!("encode account create: {e}")))?;
@@ -635,6 +660,12 @@ impl GatewayService {
         if let Some(outbound) = &mut request.outbound {
             self.resolve_credential_ref_in_endpoint(principal, outbound)?;
         }
+        // SSRF: validate all target hostnames before contacting them.
+        self.validate_mail_server_host(&request.inbound.host)
+            .await?;
+        if let Some(outbound) = &request.outbound {
+            self.validate_mail_server_host(&outbound.host).await?;
+        }
         let session = self.ensure_cypht_session(principal).await?;
         let payload = serde_json::to_value(&request)
             .map_err(|e| GatewayError::Internal(format!("encode account test: {e}")))?;
@@ -677,6 +708,20 @@ impl GatewayService {
             .ok_or_else(|| GatewayError::NotFound("account not found".into()))?;
         let smtp_id = decoded.parts.get(2).cloned();
         Ok((imap_id, smtp_id))
+    }
+
+    /// Resolve a hostname and validate that all returned addresses are allowed by network policy.
+    async fn validate_mail_server_host(&self, host: &str) -> GatewayResult<()> {
+        use tokio::net::lookup_host;
+        let lookup_target = format!("{host}:443");
+        let addresses: Vec<std::net::IpAddr> = lookup_host(lookup_target)
+            .await
+            .map_err(|_| {
+                GatewayError::InvalidRequest(format!("cannot resolve mail server: {host}"))
+            })?
+            .map(|s| s.ip())
+            .collect();
+        self.network_policy.validate_resolved(&addresses)
     }
 
     /// Map a BridgeAccountBundleRead to a ManagedAccountDetail response.
